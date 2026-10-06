@@ -62,6 +62,9 @@ export const isSecureUrl = (u: string) => /^https:\/\//i.test(u.trim()) || isLoc
 
 const trimSlash = (u: string) => u.trim().replace(/\/+$/, "");
 
+/* the most output tokens each provider's models accept today; openai's newer models refuse the field entirely */
+const MAX_OUTPUT: Record<Exclude<Provider, "openai">, number> = { claude: 128000, gemini: 65536, deepseek: 393216 };
+
 async function readError(res: Response): Promise<string> {
   let detail = "";
   try {
@@ -91,7 +94,7 @@ export async function complete(s: AiSettings, system: string, user: string, sign
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
       },
-      body: JSON.stringify({ model, max_tokens: Math.min(maxTokens, 8192), system, messages: [{ role: "user", content: user }] }),
+      body: JSON.stringify({ model, max_tokens: Math.min(maxTokens, MAX_OUTPUT.claude), system, messages: [{ role: "user", content: user }] }),
     });
     if (!res.ok) throw new Error(await readError(res));
     const j = await res.json();
@@ -111,8 +114,8 @@ export async function complete(s: AiSettings, system: string, user: string, sign
     body: JSON.stringify({
       model,
       /* OpenAI's newer models refuse `max_tokens` and default generously, so they get no budget;
-         the other compatible endpoints cap around 8k */
-      ...(s.provider === "openai" ? {} : { max_tokens: Math.min(maxTokens, 8192) }),
+         the others take the caller's budget, capped at what their models accept */
+      ...(s.provider === "openai" ? {} : { max_tokens: Math.min(maxTokens, MAX_OUTPUT[s.provider]) }),
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -247,7 +250,7 @@ export async function draftDesign(s: AiSettings, guide: string, idea: string, la
     guide,
   ].join("\n");
   const user = [`Sketch this app: ${idea.trim()}`, `Write every label, title and note in ${LANG_NAME[lang]}.`, "Three to five screens. Keep it simple."].join("\n");
-  const j = parseJsonObject(await complete(s, system, user, signal, 12000));
+  const j = parseJsonObject(await complete(s, system, user, signal, 64000));
   if (!isProject(j)) throw new Error("json");
   return j;
 }

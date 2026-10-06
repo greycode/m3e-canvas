@@ -27,6 +27,15 @@ describe("complete on the claude path", () => {
     expect(body).toMatchObject({ model: "test-model", max_tokens: 4096, system: "sys prompt", messages: [{ role: "user", content: "user prompt" }] });
   });
 
+  it("sends a large budget through and caps it at what the model accepts", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => jsonResponse({ content: [{ type: "text", text: "hi" }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await complete(settings({ provider: "claude" }), "s", "u", undefined, 64000);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(64000);
+    await complete(settings({ provider: "claude" }), "s", "u", undefined, 500000);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).max_tokens).toBe(128000);
+  });
+
   it("joins only the text blocks of the reply", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       content: [{ type: "text", text: "a" }, { type: "tool_use", id: "t" }, { type: "text", text: "b" }],
@@ -74,6 +83,18 @@ describe("complete on the openai-compatible path", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(complete(settings({ provider }), "s", "u")).resolves.toBe("ok");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(4096);
+  });
+
+  it.each([
+    ["gemini", 65536],
+    ["deepseek", 393216],
+  ] as [Provider, number][])("sends a large budget through to %s and caps it at what the model accepts", async (provider, ceiling) => {
+    const fetchMock = vi.fn().mockImplementation(() => jsonResponse({ choices: [{ finish_reason: "stop", message: { content: "ok" } }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await complete(settings({ provider }), "s", "u", undefined, 64000);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(64000);
+    await complete(settings({ provider }), "s", "u", undefined, 500000);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).max_tokens).toBe(ceiling);
   });
 
   it("calls a local endpoint without a key and without an authorization header", async () => {

@@ -30,11 +30,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ja">
+    <html lang="ja" suppressHydrationWarning>
       <head>
         {/* before the first paint: the panel widths and the theme colours the last visit left, so
             the shell drawn while the editor loads is the one that appears. The editor reads the
-            same key itself; only well-formed hex colours are taken from it. */}
+            same key itself; only well-formed hex colours are taken from it. suppressHydrationWarning
+            on <html> lets React keep this script's style edits instead of flagging the mismatch. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
