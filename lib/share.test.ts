@@ -149,7 +149,7 @@ describe("shareLink and readShareHash", () => {
     await expect(readShareHash(hash)).resolves.toBeNull();
   });
 
-  it.each([null, [], {}, { groups: [], frames: null }, { ...doc(), platform: "ios" },
+  it.each([null, [], {}, { groups: [], frames: null }, { ...doc(), platform: "macos" },
     { ...doc(), groups: [{ ...doc().groups[0], items: [] }] },
   ].map((value) => [value]))("rejects non-project JSON in either encoding: %# %o", async (value) => {
     await expect(readShareHash(plainHash(value))).resolves.toBeNull();
@@ -209,6 +209,6 @@ describe("readPastedDoc", () => {
     await expect(readPastedDoc("{}")).resolves.toBeNull();
     await expect(readPastedDoc("{oops}")).resolves.toBeNull();
     await expect(readPastedDoc("```json\n{\"groups\": []\n")).resolves.toBeNull();
-    await expect(readPastedDoc(JSON.stringify({ ...doc(), platform: "ios" }))).resolves.toBeNull();
+    await expect(readPastedDoc(JSON.stringify({ ...doc(), platform: "macos" }))).resolves.toBeNull();
   });
 });

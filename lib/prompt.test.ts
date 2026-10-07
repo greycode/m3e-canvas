@@ -15,10 +15,10 @@ const SECTIONS: Record<Lang, string[]> = {
 };
 
 const PLATFORM_LINE: Record<Lang, Record<Platform, string>> = {
-  ja: { android: "実装先は Android（ネイティブアプリ）です。", web: "実装先は Web（ブラウザで動くアプリ）です。" },
-  en: { android: "Build it for Android, as a native app.", web: "Build it for the web, as an app that runs in the browser." },
-  zh: { android: "实现目标是 Android（原生应用）。", web: "实现目标是 Web（在浏览器中运行的应用）。" },
-  ko: { android: "Android 네이티브 앱으로 구현한다.", web: "브라우저에서 실행되는 웹 앱으로 구현한다." },
+  ja: { android: "実装先は Android（ネイティブアプリ）です。", web: "実装先は Web（ブラウザで動くアプリ）です。", ios: "実装先は iOS（SwiftUI のネイティブアプリ）です。デプロイメントターゲットは iOS 26.0、Xcode 27 と iOS 27 SDK でビルドします。" },
+  en: { android: "Build it for Android, as a native app.", web: "Build it for the web, as an app that runs in the browser.", ios: "Build it for iOS as a native SwiftUI app: deployment target iOS 26.0, built with Xcode 27 and the iOS 27 SDK." },
+  zh: { android: "实现目标是 Android（原生应用）。", web: "实现目标是 Web（在浏览器中运行的应用）。", ios: "实现目标是 iOS（SwiftUI 原生应用）：部署目标 iOS 26.0，用 Xcode 27 和 iOS 27 SDK 构建。" },
+  ko: { android: "Android 네이티브 앱으로 구현한다.", web: "브라우저에서 실행되는 웹 앱으로 구현한다.", ios: "SwiftUI 네이티브 iOS 앱으로 구현한다. 배포 대상은 iOS 26.0이며 Xcode 27과 iOS 27 SDK로 빌드한다." },
 };
 
 /* One phone screen with a top app bar, a connected pair of buttons (one with a
@@ -269,6 +269,7 @@ describe("buildPrompt structure", () => {
     const web = lines(build(lang, "web"));
     expect(android[2]).toBe(PLATFORM_LINE[lang].android);
     expect(web[2]).toBe(PLATFORM_LINE[lang].web);
+    expect(lines(build(lang, "ios"))[2]).toBe(PLATFORM_LINE[lang].ios);
   });
 
   it("names Android when the doc picks no platform", () => {

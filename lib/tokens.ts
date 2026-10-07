@@ -2330,9 +2330,9 @@ export type Group = {
 export type FrameMode = "blank" | "phone";
 
 /** where the generated prompt asks for the app to be built */
-export type Platform = "android" | "web";
+export type Platform = "android" | "web" | "ios";
 export const DEFAULT_PLATFORM: Platform = "android";
-export const isPlatform = (v: unknown): v is Platform => v === "android" || v === "web";
+export const isPlatform = (v: unknown): v is Platform => v === "android" || v === "web" || v === "ios";
 /** The target the prompt assumes when the author has not picked one: the web as
  *  soon as a desktop screen exists, Android otherwise. */
 export const defaultPlatformOf = (frames: Frame[], mode: FrameMode): Platform => (mode === "phone" && frames.some((f) => !isPhoneFrame(f)) ? "web" : DEFAULT_PLATFORM);

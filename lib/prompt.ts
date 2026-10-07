@@ -1,5 +1,6 @@
 import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
 import { constrainModalRails } from "./rail";
+import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
 import {
   CONTENT_W,
   Place,
@@ -1759,7 +1760,7 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
     .flatMap((g) => explodeGroup(g, widths));
   const lines: string[] = [];
   const q = quote(lang);
-  const ph = PH[lang];
+  const ph = platform === "ios" ? { ...PH[lang], ...PH_IOS[lang] } : PH[lang];
 
   const byFrame = new Map<string, Group[]>();
   const loose: Group[] = [];
@@ -1781,7 +1782,7 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
       }
     }
   const styleNotes = kindsUsed
-    .map((k) => (k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
+    .map((k) => (platform === "ios" ? styleNoteIos(k, lang) : k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
     .filter((s): s is string => !!s);
 
   const title = only ? ph.titleOnly(q(only.name || ph.screen)) : doc.title.trim() || ph.titleAll(frames.length);
@@ -1804,10 +1805,11 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
   } else {
     lines.push(...paletteLines(pal));
   }
+  if (platform === "ios") lines.push(...COLOR_MAP_IOS[lang]);
 
   lines.push("");
   lines.push(ph.hTheme);
-  lines.push(...themeLines(th, lang));
+  lines.push(...(platform === "ios" ? themeLinesIos(th, lang) : themeLines(th, lang)));
 
   lines.push("");
   lines.push(ph.hLayout);
@@ -1849,15 +1851,21 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
 
   lines.push("");
   lines.push(ph.hGeneral);
-  for (const s of GENERAL[lang]) lines.push(`- ${typeof s === "function" ? s(platform) : s}`);
+  const general = platform === "ios" ? GENERAL_IOS[lang] : GENERAL[lang];
+  for (const s of general) lines.push(`- ${typeof s === "function" ? s(platform) : s}`);
+  if (platform === "ios") {
+    const icons = iconLineIos(groups.flatMap((g) => g.items), lang);
+    if (icons) lines.push(`- ${icons}`);
+  }
   /* the author's own choices come last, in the order they are offered */
   const chosen = promptOptionsOf(doc);
   for (const key of PROMPT_OPTIONS) {
     if (!chosen.includes(key)) continue;
-    const line = PROMPT_OPTION_TEXT[lang][key].line;
+    const line = platform === "ios" && key === "deliverable" ? DELIVERABLE_IOS[lang] : PROMPT_OPTION_TEXT[lang][key].line;
     lines.push(`- ${typeof line === "function" ? line(platform) : line}`);
   }
-  return lines.join("\n");
+  const out = lines.join("\n");
+  return platform === "ios" ? toPointsIos(out) : out;
 }
 
 /** the prompt to hand out: the author's edited text when there is one, otherwise the generated one */

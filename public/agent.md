@@ -43,7 +43,7 @@ Rough placement is fine. The person presses **Tidy** and bars snap to the edges,
   "title": "Recipes",              // the app's name
   "brief": "Save and search recipes.",   // one or two sentences on what the app is for (optional)
   "frame": "phone",                // always "phone"
-  "platform": "android",           // "android" (default) or "web"
+  "platform": "android",           // "android" (default), "web" or "ios"
   "paletteKey": "purple",          // "purple" | "blue" | "green" | "coral" | "amber" | "teal" | "mono"
   "theme": { "dark": false, "bothModes": true, "contrast": "standard", "shape": "rounded", "font": "roboto", "emphasized": false, "motion": "expressive" },
   "frames": [ /* screens */ ],

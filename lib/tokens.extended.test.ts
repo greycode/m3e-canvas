@@ -321,10 +321,11 @@ describe("normalizeTheme", () => {
 });
 
 describe("isPlatform / defaultPlatformOf", () => {
-  it("isPlatform narrows to 'android' | 'web'", () => {
+  it("isPlatform narrows to 'android' | 'web' | 'ios'", () => {
     expect(isPlatform("android")).toBe(true);
     expect(isPlatform("web")).toBe(true);
-    expect(isPlatform("ios")).toBe(false);
+    expect(isPlatform("ios")).toBe(true);
+    expect(isPlatform("macos")).toBe(false);
     expect(isPlatform(undefined)).toBe(false);
   });
 

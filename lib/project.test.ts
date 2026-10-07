@@ -29,11 +29,11 @@ describe("isProject", () => {
     expect(legacy.frames[0]).not.toHaveProperty("w");
   });
 
-  it.each([undefined, "android", "web"])("accepts platform %s", (platform) => {
+  it.each([undefined, "android", "web", "ios"])("accepts platform %s", (platform) => {
     expect(isProject({ ...doc(), platform })).toBe(true);
   });
 
-  it.each([null, "ios", "", 0, {}, true])("rejects platform %j", (platform) => {
+  it.each([null, "macos", "", 0, {}, true])("rejects platform %j", (platform) => {
     expect(isProject({ ...doc(), platform })).toBe(false);
   });
 
