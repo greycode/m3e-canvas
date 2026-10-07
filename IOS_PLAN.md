@@ -1,22 +1,27 @@
 # m3e-canvas 支持 iOS 26–27（SwiftUI）定制方案
 
-2026年10月7日 · @Someone![img]()
+2026年10月7日 · @Someone
 
 ## 摘要
 
 结论：在已有的「目标平台」开关上新增 `"ios"`，把 iOS 文本全部放进新文件 `lib/prompt-ios.ts`，`buildPrompt` 只在 `platform === "ios"` 时换用这套文本。阶段 1 已在源码 `039ec31` 上实现：`npm run typecheck` 通过，24 个测试文件全部通过，Android 和 Web 的提示词与改动前逐字一致（快照测试验证）。
 
 | 阶段                      | 内容                                                         | 状态                                                         |
-| :------------------------ | :----------------------------------------------------------- | :----------------------------------------------------------- |
+| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | 1 提示词层（必做）        | 新增 iOS 平台；36 种部件的 SwiftUI 映射；Liquid Glass 规则；配色、字体、动效、单位、图标映射。改 11 个文件，新增 502 行，删除 19 行 | 已完成，已验证（typecheck + vitest）。补丁可直接 `git apply` |
 | 1b 日语和韩语翻译（可选） | ja、ko 的长文本目前回退到英文，翻译成本语言                  | 未开始                                                       |
-| 2 画布外观层（可选）      | 画布和预览用 iOS 外观绘制 8 种部件，尺寸和布局算法不变       | 未开始，规格见第 5 节                                        |
+| 2 画布外观层（可选）      | 画布和预览用 iOS 外观绘制 7 种部件，尺寸和布局算法不变       | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 03-ios-canvas-skin.patch |
 
 交付物共 3 个文件，和本文档一起交给 Sonnet：
 
 - `01-baseline-test.patch`：Android/Web 快照测试，必须在改源码之前应用。
 - `02-ios-prompt.patch`：阶段 1 的全部改动。
 - `sample-ios-prompt-zh.md`：用一个笔记应用草图生成的中文 iOS 提示词样例，供你检查效果。
+
+阶段 2 另有 2 个文件：
+
+- `03-ios-canvas-skin.patch`：阶段 2 的全部改动，在阶段 1 的提交之上应用。
+- `ios-canvas-skin-preview.png`：同一个设计在 Android、iOS 浅色、iOS 深色下的画布截图，供阶段 2 第 6 步人工核对。
 
 未确认的部分：提示词中的 SwiftUI API 名称来自 Apple 文档、WWDC25 和 WWDC26 资料，没有在 Xcode 中编译过。第 7 节给出用 Xcode 27 做端到端验收的方法。
 
@@ -27,7 +32,7 @@ m3e-canvas 已有「目标平台」开关（Android / Web），这是接入 iOS 
 说明：deepwiki 生成的页面有部分内容与源码不符（例如 `M3Node` 的 props 列表、`prompt.ts` 的行号）。下表的行号以 GitHub 源码提交 `039ec31`（2026-10-03）为准。
 
 | 文件                         | 作用                                                         | 与 iOS 定制的关系                 |
-| :--------------------------- | :----------------------------------------------------------- | :-------------------------------- |
+| ---------------------------- | ------------------------------------------------------------ | --------------------------------- |
 | `lib/tokens.ts`              | 部件种类 `Kind`（36 种）、`Item`、`Theme`、`Doc`；`Platform` 类型在第 2333–2338 行 | 给 `Platform` 加 `"ios"`          |
 | `lib/prompt.ts`              | `buildPrompt`（第 1745 行）；`STYLE_NOTES`、`STYLE_NOTES_WEB`、`GENERAL`、`THEME_NOTES`、`PH`、`PROMPT_OPTION_TEXT` 等文本表 | 插入 iOS 分支（阶段 1 的主体）    |
 | `components/PromptPanel.tsx` | 平台分段控件，第 438–449 行                                  | 加第 3 个选项「iOS」              |
@@ -66,7 +71,7 @@ iOS 26 的 Liquid Glass API（`.glassEffect`、`GlassEffectContainer`、`.button
 左列是画布上的部件种类（`Kind`），中列是提示词要求的 SwiftUI 实现。完整措辞见第 6 节的 `STYLE_NOTES_IOS`。
 
 | 部件（Kind）       | SwiftUI 实现                                                 | 用到的新版本 API                          |
-| :----------------- | :----------------------------------------------------------- | :---------------------------------------- |
+| ------------------ | ------------------------------------------------------------ | ----------------------------------------- |
 | `button`           | `Button`，filled → `.borderedProminent`（悬浮时 `.glassProminent`），tonal/outlined → `.bordered`，elevated → `.glass`，text → `.borderless`；胶囊形 | iOS 26                                    |
 | `iconButton`       | `Button(Image(systemName:))`，`.glassProminent` / `.glass`，圆形；工具栏内用普通按钮 | iOS 26                                    |
 | `fab`              | 有导航栏：`ToolbarItem(placement: .primaryAction)`；没有导航栏：`.glassProminent` 圆形悬浮按钮 | iOS 26                                    |
@@ -107,7 +112,7 @@ iOS 26 的 Liquid Glass API（`.glassEffect`、`GlassEffectContainer`、`.button
 ### 其他设计轴的映射
 
 | 设计轴   | 画布中的 Material 设置                                | iOS 提示词的写法                                             |
-| :------- | :---------------------------------------------------- | :----------------------------------------------------------- |
+| -------- | ----------------------------------------------------- | ------------------------------------------------------------ |
 | 颜色     | M3 配色角色（primary、surface…）                      | primary → AccentColor；容器色 → 资源命名颜色；surface、onSurface、outline → 系统语义色 |
 | 形状     | square / rounded / full                               | 8pt 连续圆角 / 胶囊按钮 + 20pt 卡片 + `ConcentricRectangle()` / 全胶囊 + 32pt 卡片 |
 | 字体     | Roboto、Roboto Flex、Roboto Serif、System；emphasized | SF Pro（Roboto Serif → `.fontDesign(.serif)`）；emphasized → `.fontWeight(.semibold)`；只用动态字体样式 |
@@ -120,6 +125,8 @@ iOS 26 的 Liquid Glass API（`.glassEffect`、`GlassEffectContainer`、`.button
 ## 改造架构
 
 改造只在 `buildPrompt` 内部加分支：`platform === "ios"` 时换用新文件 `lib/prompt-ios.ts` 的文本，屏幕结构、配色值、跳转说明这些与平台无关的部分两条路径共用。
+
+[embed: node/111aa783-63ca]
 
 高亮的是本次新增的文件。Android 和 Web 路径上的文本没有变化，快照测试保证这一点。
 
@@ -174,20 +181,20 @@ M4. `lib/prompt.ts`，7 处。
 
 M4-1. 查找 `import { constrainModalRails } from "./rail";`，在它后面插入一行：
 
-```
+```ts
 import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
 ```
 
 M4-2. 查找：
 
-```
+```ts
   const q = quote(lang);
   const ph = PH[lang];
 ```
 
 替换为：
 
-```
+```ts
   const q = quote(lang);
   const ph = platform === "ios" ? { ...PH[lang], ...PH_IOS[lang] } : PH[lang];
 ```
@@ -196,7 +203,7 @@ M4-3. 查找 `.map((k) => (k === "navRail" && wideRail ?`，替换为 `.map((k) 
 
 M4-4. 查找：
 
-```
+```ts
     lines.push(...paletteLines(pal));
   }
 
@@ -207,7 +214,7 @@ M4-4. 查找：
 
 替换为：
 
-```
+```ts
     lines.push(...paletteLines(pal));
   }
   if (platform === "ios") lines.push(...COLOR_MAP_IOS[lang]);
@@ -219,13 +226,13 @@ M4-4. 查找：
 
 M4-5. 查找：
 
-```
+```ts
   for (const s of GENERAL[lang]) lines.push(`- ${typeof s === "function" ? s(platform) : s}`);
 ```
 
 替换为：
 
-```
+```ts
   const general = platform === "ios" ? GENERAL_IOS[lang] : GENERAL[lang];
   for (const s of general) lines.push(`- ${typeof s === "function" ? s(platform) : s}`);
   if (platform === "ios") {
@@ -236,13 +243,13 @@ M4-5. 查找：
 
 M4-6. 查找 `    const line = PROMPT_OPTION_TEXT[lang][key].line;`，替换为：
 
-```
+```ts
     const line = platform === "ios" && key === "deliverable" ? DELIVERABLE_IOS[lang] : PROMPT_OPTION_TEXT[lang][key].line;
 ```
 
 M4-7. 查找 `buildPrompt` 的结尾：
 
-```
+```ts
   return lines.join("\n");
 }
 
@@ -251,7 +258,7 @@ M4-7. 查找 `buildPrompt` 的结尾：
 
 替换为：
 
-```
+```ts
   const out = lines.join("\n");
   return platform === "ios" ? toPointsIos(out) : out;
 }
@@ -261,7 +268,7 @@ M4-7. 查找 `buildPrompt` 的结尾：
 
 M5. `components/PromptPanel.tsx`：查找 `{ key: "web", icon: "language", label: "Web", title: t("targetWeb", lang) },`，在它后面插入一行，缩进与上一行相同：
 
-```
+```tsx
         { key: "ios", icon: "phone_iphone", label: "iOS", title: t("targetIos", lang) },
 ```
 
@@ -282,7 +289,7 @@ M8. 现有测试，共 6 处。原来有 3 个测试把 `"ios"` 当作非法值�
 
 `PLATFORM_LINE` 的 `ios` 值（必须与 `PH_IOS[lang].platform()` 的返回值逐字相同）：
 
-```
+```ts
 ja: "実装先は iOS（SwiftUI のネイティブアプリ）です。デプロイメントターゲットは iOS 26.0、Xcode 27 と iOS 27 SDK でビルドします。"
 en: "Build it for iOS as a native SwiftUI app: deployment target iOS 26.0, built with Xcode 27 and the iOS 27 SDK."
 zh: "实现目标是 iOS（SwiftUI 原生应用）：部署目标 iOS 26.0，用 Xcode 27 和 iOS 27 SDK 构建。"
@@ -302,64 +309,484 @@ ko: "SwiftUI 네이티브 iOS 앱으로 구현한다. 배포 대상은 iOS 26.0�
 
 翻译规则：反引号中的代码、API 名和 SF Symbol 名原样保留。「SwiftUI」「Liquid Glass」「SF Symbols」不翻译。每条开头的部件名使用 `lib/i18n.ts` 中 `KIND_TEXT` 对应语言的名称。
 
-### 阶段 2：画布 iOS 外观（可选）
+### 阶段 2：画布 iOS 外观
 
-状态：未实现，未验证。建议在阶段 1 合并后单独开分支。
+状态：已完成，已验证。补丁 `03-ios-canvas-skin.patch` 基于阶段 1 的提交：`npm run typecheck` 通过，25 个测试文件通过。在浏览器中加载同一个设计，分别以 iOS 和 Android 为目标截图，9 个部件在两种外观下的屏幕尺寸逐一相同。效果见 `ios-canvas-skin-preview.png`。
+
+选择「iOS」目标后，画布和预览用 iOS 26 外观绘制 7 种部件：导航栏（`bottomNav`）、顶部应用栏（`topAppBar`）、列表项（`listItem`）、搜索栏（`searchBar`）、选项卡（`tabs`）、滑块（`slider`）、悬浮工具栏（`toolbar`）。部件只换外观，宽高与 Material 版相同，所以吸附、相连组、整理（Tidy）和提示词都不受影响。
+
+| 文件                          | 改动                                                         |
+| ----------------------------- | ------------------------------------------------------------ |
+| `lib/platform.ts`             | 新建：`PlatformContext` 和 `usePlatform`                     |
+| `components/IosNode.tsx`      | 新建：`IOS_SKIN_KINDS`、`takesIosSkin`、`IosBody`（7 种部件的 iOS 绘制） |
+| `components/IosNode.test.tsx` | 新建：覆盖范围、尺寸一致、浅色和深色、文字显示               |
+| `components/M3Node.tsx`       | `M3Node` 和 `M3Static` 在 iOS 目标下改用 `IosBody`           |
+| `app/Editor.tsx`              | 用 `PlatformContext` 包住画布和预览                          |
+
+有意保留的差异：
+
+- 屏幕背景仍是配色的 surface 颜色。iOS 的系统背景由提示词负责。
+- 宽度由内容决定的部件保留 Material 外观：按钮、扩展 FAB、标签片、开关、复选框、单选按钮、文字、分割按钮、FAB 菜单。它们的宽度是从 Material 绘制结果量出来的，换外观会改变尺寸。
+- 图标仍是 Material Symbols，因为 SF Symbols 的许可不允许用在网页上。
+- Liquid Glass 用半透明背景加 `backdrop-filter` 模糊近似。保存 PNG 时模糊效果可能不出现，未验证。
+- 相连的列表项之间保留 Material 的 3px 间隙。
 
 前置条件：阶段 1 已提交，测试全部通过。
 
-注意：只换外观，不改尺寸。iOS 外观的部件必须占用与 Material 版完全相同的宽高，否则吸附、布局和提示词里的尺寸都会变化。宽度由内容决定的部件（`isMeasured(item)` 为 `true`）一律保留 Material 外观。
+1. 新建分支：`git checkout -b feat/ios-canvas-skin`。
+2. 检查补丁：`git apply --check 03-ios-canvas-skin.patch`。如果检查失败，跳到「阶段 2 手工应用」，完成后从第 4 步继续。
+3. 应用补丁：`git apply 03-ios-canvas-skin.patch`。
+4. 运行 `npm run typecheck`。预期结果：退出码 0。
+5. 运行 `npm test`。预期结果：所有测试文件通过（在 `039ec31` 加阶段 1 的基础上是 25 个），`prompt-baseline` 的 8 个快照没有变化。
+6. 运行 `npm run dev`，手动检查下面 4 项：
+   - 提示词面板选「iOS」后，画布上 7 种部件显示 iOS 外观，与 `ios-canvas-skin-preview.png` 一致。
+   - 选回「Android」或「Web」后，恢复 Material 外观。
+   - 拖动、吸附、选中框和撤销正常；切换目标时，部件的位置和大小不变。
+   - 预览模式中同样显示 iOS 外观。
+7. 提交：`git add -A && git commit -m "feat: iOS skin on the canvas"`。
 
-1. 新建 `lib/platform.ts`：
+### 阶段 2 手工应用（只在第 2 步失败时使用）
 
-```
+按 P1 至 P5 的顺序修改。查找文本必须在文件中只出现 1 次；出现 0 次或多于 1 次时，停止并报告。
+
+P1. 新建 `lib/platform.ts`：
+
+```ts
 "use client";
 
 import { createContext, useContext } from "react";
 import { DEFAULT_PLATFORM, Platform } from "./tokens";
 
-/** the prompt target, read by parts that draw an iOS skin on the canvas */
+/** The prompt target. On "ios" the canvas draws a few parts the way iOS 26 draws them;
+ *  each keeps the size of its Material part, so snapping, layout and the prompt do not change. */
 export const PlatformContext = createContext<Platform>(DEFAULT_PLATFORM);
 export const usePlatform = () => useContext(PlatformContext);
 ```
 
-1. `app/Editor.tsx`：从 `@/lib/platform` 导入 `PlatformContext`。在 `<ThemeContext.Provider value={theme}>` 的下一行插入 `<PlatformContext.Provider value={platform ?? defaultPlatformOf(frames, frame)}>`，在对应的 `</ThemeContext.Provider>` 的上一行插入 `</PlatformContext.Provider>`。
-2. 新建 `components/IosNode.tsx`，导出常量 `IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar"]` 和组件 `IosBody({ item, p, w, h, dark })`。`IosBody` 的根元素宽 `w`、高 `h`，按下表绘制。图标继续用 `components/M3Node.tsx` 导出的 `Icon`（Material Symbols），因为 SF Symbols 的许可不允许用在网页上。
-3. `components/M3Node.tsx` 的 `M3Node`：在 `const reducedMotion = useReducedMotion();` 后面加 `const platform = usePlatform();` 和 `const dark = useTheme().dark;`。在 `return (` 前面加一个条件返回：当 `platform === "ios" && IOS_SKIN_KINDS.includes(item.kind) && !measured` 时，返回一个 `div`。这个 `div` 必须带 `data-node={item.id}`、`data-kind={item.kind}`、`onPointerDown={onPointerDown}`，样式复制原 `motion.div` 的 `width`、`height`、`position`、`zIndex`、`cursor`、`userSelect`、`touchAction`、`boxSizing`、`outline`、`outlineOffset`、`flex`，子元素为 `<IosBody item={drawn} p={palette} w={size.w} h={size.h} dark={dark} />`。
+P2. 新建 `components/IosNode.tsx`，内容为本小节末尾的代码，原样复制。
 
-警告：条件返回必须放在所有 hook 调用之后。放在 hook 之前会让 hook 数量随平台切换而变化，React 会报错。
+P3. 新建 `components/IosNode.test.tsx`，内容为本小节末尾的代码，原样复制。
 
-1. `M3Static`：在函数开头调用 `usePlatform()` 和 `useTheme()`，在 `return (` 前面加同样的条件返回，`div` 的样式额外合并传入的 `style`。
-2. 运行 `npm run typecheck` 和 `npm test`。预期结果：全部通过。
-3. 运行 `npm run dev`，手动检查 4 项：选择 iOS 后 7 种部件显示 iOS 外观；切回 Android 后恢复 Material 外观；拖动、吸附和选中框正常；保存 PNG 正常。
+P4. `components/M3Node.tsx`，4 处。
 
-`IosBody` 共用的样式值（`dark` 为 `true` 时取第二个值）：
+P4-1. 查找 `import { useTheme } from "@/lib/theme";`，在它后面插入两行：
 
-| 名称           | 值                                                           |
-| :------------- | :----------------------------------------------------------- |
-| 玻璃 GLASS     | `background: rgba(255,255,255,0.72)` / `rgba(44,44,46,0.72)`；`backdropFilter` 和 `WebkitBackdropFilter: blur(20px) saturate(180%)`；`border: 1px solid rgba(255,255,255,0.6)` / `rgba(255,255,255,0.12)`；`boxShadow: 0 8px 24px rgba(0,0,0,0.12)` |
-| label          | `#000000` / `#FFFFFF`                                        |
-| secondaryLabel | `rgba(60,60,67,0.6)` / `rgba(235,235,245,0.6)`               |
-| fill           | `rgba(118,118,128,0.12)` / `rgba(118,118,128,0.24)`          |
-| groupedRow     | `#FFFFFF` / `#1C1C1E`                                        |
-| 字体           | `-apple-system, system-ui, sans-serif`                       |
+```tsx
+import { usePlatform } from "@/lib/platform";
+import { IosBody, takesIosSkin } from "./IosNode";
+```
 
-| Kind        | 绘制规格                                                     |
-| :---------- | :----------------------------------------------------------- |
-| `bottomNav` | 根元素透明。距底边 8px、左右各 16px 处画胶囊：高 62px，圆角 999px，GLASS。`item.tabs` 等分宽度，每项为 24px 图标加 10px、字重 500 的标签，竖排居中。选中项（`item.selected ?? 0`）的图标和文字用 `p.primary`，背后画上下各内缩 4px 的胶囊，背景为 `p.primary` 加 12% 不透明度；其他项用 label |
-| `topAppBar` | 根元素透明。顶部一行高 44px：`item.icon`、`item.icon2` 各画在 44×44 的圆形 GLASS 按钮中，分别距左右边 16px。`h` 不大于 64 时，标题 `item.label` 为 17px、字重 600，在这一行水平居中；`h` 大于 64 时，标题为 34px、字重 700，左对齐（距左 16px），放在这一行下方 |
-| `listItem`  | 背景 groupedRow，左右内边距 16px。有 `item.icon` 时，左侧画 30×30、圆角 7px、背景 `p.primary` 的图标块，内放 18px 白色图标。标题 17px label；`item.supporting` 为 15px secondaryLabel，在标题下方。尾部：`item.switch` 为 `true` 时画 51×31 的开关（轨道开为 `p.primary`、关为 fill，27px 白色圆形滑块，阴影 `0 3px 8px rgba(0,0,0,0.15)`，位置由 `item.checked` 决定）；否则有 `item.icon2` 时画 20px secondaryLabel 图标 |
-| `searchBar` | 根元素透明。垂直居中画高 44px、占满宽度的 GLASS 胶囊。左侧 14px 处画 20px 的 `search` 图标（secondaryLabel），后接 17px secondaryLabel 的占位文字 `item.label`。`item.icon2` 存在且不是 `mic` 时，画在右侧 14px 处 |
-| `tabs`      | 根元素透明。垂直居中画高 36px 的胶囊轨道，背景 fill，内边距 2px。`item.tabs` 等分宽度；选中段（`item.selected ?? 0`）画白色胶囊（`dark` 时 `#636366`），阴影 `0 2px 6px rgba(0,0,0,0.12)`。标签 13px、字重 600、label 颜色 |
-| `slider`    | 根元素透明。垂直居中画高 6px、圆角 3px 的轨道，背景 fill；左侧 `item.value ?? 40` 百分比的宽度画 `p.primary`。在该位置画 38×24 的白色胶囊滑块，阴影 `0 2px 6px rgba(0,0,0,0.2)` |
-| `toolbar`   | 根元素透明。垂直居中画高 50px、占满宽度的 GLASS 胶囊。`item.tabs` 的图标（22px，label 颜色）等距排列。`item.variant` 为 `"filled"` 时，第一个图标放进 36×36、背景 `p.primary` 的圆中，图标改为白色 |
+P4-2. 在 `M3Node` 中查找下面两行，在两行之间插入 `const platform = usePlatform();` 和 `const dark = useTheme().dark;`（各占一行，缩进 2 个空格）：
+
+```tsx
+  const reducedMotion = useReducedMotion();
+  const instantRail = reducedMotion && item.kind === "navRail"
+```
+
+警告：P4-3 的代码必须放在所有 hook 调用之后。放在 hook 之前会让 hook 数量随目标平台变化，React 会报错。下面的位置已满足这个要求。
+
+P4-3. 查找下面 3 行，在它们前面插入代码块中的内容：
+
+```tsx
+  return (
+    <motion.div
+      data-node={item.id}
+  /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
+  if (platform === "ios" && takesIosSkin(drawn))
+    return (
+      <div
+        data-node={item.id}
+        data-kind={item.kind}
+        data-skin="ios"
+        onPointerDown={onPointerDown}
+        style={{
+          width: size.w,
+          height: size.h,
+          flex: "0 0 auto",
+          position: selected && inRun ? "relative" : undefined,
+          zIndex: selected && inRun ? 1 : undefined,
+          cursor: !interactive ? "default" : dragging ? "grabbing" : "grab",
+          userSelect: "none",
+          touchAction: "none",
+          boxSizing: "border-box",
+          borderRadius: `${r.tl}px ${r.tr}px ${r.br}px ${r.bl}px`,
+          outline: selected ? `2px solid ${palette.primary}` : "2px solid transparent",
+          outlineOffset: 3,
+          transition: "outline-color 120ms",
+        }}
+      >
+        <IosBody item={drawn} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+      </div>
+    );
+```
+
+P4-4. 在 `M3Static` 中查找：
+
+```tsx
+  style?: React.CSSProperties;
+}) {
+  const r = radii ?? baseRadii(item);
+  const size = sizeOf(item, {});
+  const measured = isMeasured(item);
+```
+
+替换为：
+
+```tsx
+  style?: React.CSSProperties;
+}) {
+  const platform = usePlatform();
+  const dark = useTheme().dark;
+  const r = radii ?? baseRadii(item);
+  const size = sizeOf(item, {});
+  const measured = isMeasured(item);
+  if (platform === "ios" && takesIosSkin(item))
+    return (
+      <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
+        <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+      </div>
+    );
+```
+
+P5. `app/Editor.tsx`，3 处：
+
+- 查找 `import { ThemeContext, ensureFontLoaded, ensureLangFontLoaded } from "@/lib/theme";`，在它后面插入 `import { PlatformContext } from "@/lib/platform";`。
+- 查找 `    <ThemeContext.Provider value={theme}>`，在它后面插入一行 `    <PlatformContext.Provider value={platform ?? defaultPlatformOf(frames, frame)}>`。
+- 查找相邻的两行 `    </ThemeContext.Provider>` 和 `    </LangContext.Provider>`，在第一行前面插入一行 `    </PlatformContext.Provider>`。
+
+`components/IosNode.tsx` 全文（P2）：
+
+```tsx
+"use client";
+
+import type { CSSProperties } from "react";
+import { Item, Kind, NAV_BAR_H, Palette, Radii, STATUS_BAR_H, isMeasured, isScrollableTabs } from "../lib/tokens";
+
+/* When the prompt targets iOS, the canvas draws these parts the way iOS 26 draws them.
+ * Each one fills exactly the box its Material part has (sizeOf is untouched), so snapping,
+ * runs, tidy and the prompt see no difference. Parts whose width comes from their content
+ * (buttons, chips, switches…) keep the Material drawing, since their width is measured
+ * from that drawing. Icons stay Material Symbols: SF Symbols may not ship on the web. */
+
+/** kinds the canvas can draw in an iOS 26 skin */
+export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar"];
+
+/** the part has an iOS skin and its size does not depend on how it is drawn */
+export const takesIosSkin = (item: Item) => IOS_SKIN_KINDS.includes(item.kind) && !isMeasured(item);
+
+const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif";
+
+/** the iOS system colors the skin needs, for the light or the dark canvas */
+function sys(dark: boolean) {
+  return {
+    label: dark ? "#FFFFFF" : "#000000",
+    secondary: dark ? "rgba(235,235,245,0.6)" : "rgba(60,60,67,0.6)",
+    fill: dark ? "rgba(118,118,128,0.24)" : "rgba(118,118,128,0.12)",
+    track: dark ? "rgba(120,120,128,0.32)" : "rgba(120,120,128,0.2)",
+    row: dark ? "#1C1C1E" : "#FFFFFF",
+    knob: dark ? "#636366" : "#FFFFFF",
+  };
+}
+type Sys = ReturnType<typeof sys>;
+
+/** Liquid Glass, approximated: a translucent fill that blurs what is behind it, a light rim and a soft shadow */
+function glass(dark: boolean, lifted: boolean): CSSProperties {
+  return {
+    background: dark ? "rgba(44,44,46,0.72)" : "rgba(255,255,255,0.72)",
+    backdropFilter: "blur(20px) saturate(180%)",
+    WebkitBackdropFilter: "blur(20px) saturate(180%)",
+    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
+    boxShadow: lifted ? "0 8px 24px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.12)",
+    boxSizing: "border-box",
+  };
+}
+
+const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+const oneLine: CSSProperties = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const center: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center" };
+
+/** a Material Symbols glyph, the same face the Material parts use */
+function Glyph({ name, size, color, fill }: { name: string; size: number; color: string; fill?: boolean }) {
+  return (
+    <span className="msr" aria-hidden data-fill={fill ? "1" : "0"} style={{ fontSize: size, color, lineHeight: 1 }}>
+      {name}
+    </span>
+  );
+}
+
+/** the iOS switch: 51×31, the accent color when on */
+function Switch({ on, p, s }: { on: boolean; p: Palette; s: Sys }) {
+  return (
+    <div style={{ position: "relative", flex: "0 0 auto", width: 51, height: 31, borderRadius: 999, background: on ? p.primary : s.track }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 2,
+          left: on ? 22 : 2,
+          width: 27,
+          height: 27,
+          borderRadius: 999,
+          background: "#FFFFFF",
+          boxShadow: "0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16)",
+        }}
+      />
+    </div>
+  );
+}
+
+/** the floating tab bar: a glass capsule above the home indicator, the selected tab tinted */
+function TabBar({ item, p, s, dark }: { item: Item; p: Palette; s: Sys; dark: boolean }) {
+  const tabs = item.tabs ?? [];
+  const sel = item.selected ?? 0;
+  return (
+    <div style={{ position: "absolute", left: 16, right: 16, bottom: NAV_BAR_H - 8, height: 62, borderRadius: 999, padding: 4, display: "flex", ...glass(dark, true) }}>
+      {tabs.map((t, i) => {
+        const on = i === sel;
+        const c = on ? p.primary : s.label;
+        return (
+          <div key={i} style={{ ...center, flex: 1, minWidth: 0, flexDirection: "column", gap: 2, borderRadius: 999, background: on ? tint(p.primary, 14) : undefined }}>
+            <Glyph name={t.icon || "circle"} size={24} color={c} fill={on} />
+            <span style={{ ...oneLine, maxWidth: "100%", fontSize: 10, fontWeight: 500, color: c }}>{t.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** the navigation bar: glass circle buttons in a 44pt row under the status bar; a small bar centres its
+ *  title in that row, a medium or large one sets a large title underneath it */
+function NavBar({ item, s, h, dark }: { item: Item; s: Sys; h: number; dark: boolean }) {
+  const large = h - STATUS_BAR_H > 64;
+  const rowTop = large ? STATUS_BAR_H + 4 : STATUS_BAR_H + (h - STATUS_BAR_H - 44) / 2;
+  const button = (name: string, side: "left" | "right") => (
+    <div style={{ ...center, position: "absolute", [side]: 16, top: rowTop, width: 44, height: 44, borderRadius: 999, ...glass(dark, false) }}>
+      <Glyph name={name} size={22} color={s.label} />
+    </div>
+  );
+  return (
+    <>
+      {item.icon && button(item.icon, "left")}
+      {item.icon2 && button(item.icon2, "right")}
+      {large ? (
+        <div style={{ ...oneLine, position: "absolute", left: 16, right: 16, bottom: 12, fontSize: 34, fontWeight: 700, color: s.label }}>{item.label}</div>
+      ) : (
+        <div style={{ ...center, ...oneLine, position: "absolute", left: 76, right: 76, top: rowTop, height: 44, fontSize: 17, fontWeight: 600, color: s.label }}>{item.label}</div>
+      )}
+    </>
+  );
+}
+
+/** an inset-grouped row; the run's corners come from the Material geometry, so neighbours still fuse */
+function Row({ item, p, s, radii }: { item: Item; p: Palette; s: Sys; radii?: Radii }) {
+  const bare = item.iconFill === "none";
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "0 16px",
+        boxSizing: "border-box",
+        background: s.row,
+        borderRadius: radii ? `${radii.tl}px ${radii.tr}px ${radii.br}px ${radii.bl}px` : 10,
+      }}
+    >
+      {item.icon &&
+        (bare ? (
+          <Glyph name={item.icon} size={24} color={p.primary} />
+        ) : (
+          <div style={{ ...center, flex: "0 0 auto", width: 30, height: 30, borderRadius: 7, background: p.primary }}>
+            <Glyph name={item.icon} size={18} color={p.onPrimary} />
+          </div>
+        ))}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        <span style={{ ...oneLine, fontSize: 17, color: s.label }}>{item.label}</span>
+        {item.supporting?.trim() && <span style={{ ...oneLine, fontSize: 15, color: s.secondary }}>{item.supporting}</span>}
+      </div>
+      {item.switch ? <Switch on={!!item.checked} p={p} s={s} /> : item.icon2 ? <Glyph name={item.icon2} size={20} color={s.secondary} /> : null}
+    </div>
+  );
+}
+
+/** the search field: a 44pt glass capsule with the magnifying glass, the placeholder and the trailing icon */
+function SearchField({ item, s, h, dark }: { item: Item; s: Sys; h: number; dark: boolean }) {
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, top: (h - 44) / 2, height: 44, borderRadius: 999, display: "flex", alignItems: "center", gap: 8, padding: "0 14px", ...glass(dark, false) }}>
+      <Glyph name="search" size={20} color={s.secondary} />
+      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.secondary }}>{item.label}</span>
+      {item.icon2 && <Glyph name={item.icon2} size={20} color={s.secondary} />}
+    </div>
+  );
+}
+
+/** a segmented control, or a scrolling row of capsules when the tabs scroll */
+function Segments({ item, p, s, h }: { item: Item; p: Palette; s: Sys; h: number }) {
+  const tabs = item.tabs ?? [];
+  const sel = item.selected ?? 0;
+  if (isScrollableTabs(item))
+    return (
+      <div style={{ position: "absolute", left: 16, right: 0, top: (h - 32) / 2, height: 32, display: "flex", gap: 8, overflow: "hidden" }}>
+        {tabs.map((t, i) => (
+          <div key={i} style={{ ...center, flex: "0 0 auto", padding: "0 14px", borderRadius: 999, fontSize: 15, fontWeight: 500, background: i === sel ? p.primary : s.fill, color: i === sel ? p.onPrimary : s.label }}>
+            {t.label}
+          </div>
+        ))}
+      </div>
+    );
+  return (
+    <div style={{ position: "absolute", left: 16, right: 16, top: (h - 36) / 2, height: 36, borderRadius: 999, padding: 2, display: "flex", boxSizing: "border-box", background: s.fill }}>
+      {tabs.map((t, i) => (
+        <div
+          key={i}
+          style={{
+            ...center,
+            ...oneLine,
+            flex: 1,
+            minWidth: 0,
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: i === sel ? 600 : 500,
+            color: s.label,
+            background: i === sel ? s.knob : undefined,
+            boxShadow: i === sel ? "0 2px 6px rgba(0,0,0,0.12)" : undefined,
+          }}
+        >
+          {t.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** the slider: a thin track, the accent up to the value and a white capsule thumb */
+function Slider({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
+  const v = Math.min(100, Math.max(0, item.value ?? 40));
+  const at = (w * v) / 100;
+  return (
+    <>
+      <div style={{ position: "absolute", left: 0, right: 0, top: h / 2 - 3, height: 6, borderRadius: 3, background: s.track }} />
+      <div style={{ position: "absolute", left: 0, width: at, top: h / 2 - 3, height: 6, borderRadius: 3, background: p.primary }} />
+      <div
+        style={{
+          position: "absolute",
+          left: Math.min(w - 38, Math.max(0, at - 19)),
+          top: h / 2 - 12,
+          width: 38,
+          height: 24,
+          borderRadius: 999,
+          background: "#FFFFFF",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.2), 0 0 0 0.5px rgba(0,0,0,0.04)",
+        }}
+      />
+    </>
+  );
+}
+
+/** the bottom toolbar: one glass capsule of icon buttons; the vibrant one tints its first action */
+function Toolbar({ item, p, s, h, dark }: { item: Item; p: Palette; s: Sys; h: number; dark: boolean }) {
+  const icons = (item.tabs ?? []).map((t) => t.icon || "circle");
+  const vibrant = item.variant === "filled";
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, top: (h - 50) / 2, height: 50, borderRadius: 999, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "space-around", ...glass(dark, true) }}>
+      {icons.map((name, i) =>
+        vibrant && i === 0 ? (
+          <div key={i} style={{ ...center, width: 36, height: 36, borderRadius: 999, background: p.primary }}>
+            <Glyph name={name} size={20} color={p.onPrimary} />
+          </div>
+        ) : (
+          <div key={i} style={{ ...center, width: 36, height: 36 }}>
+            <Glyph name={name} size={22} color={s.label} />
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+/** one part in its iOS skin, filling exactly w×h */
+export function IosBody({ item, p, w, h, dark, radii }: { item: Item; p: Palette; w: number; h: number; dark: boolean; radii?: Radii }) {
+  const s = sys(dark);
+  const body = (() => {
+    switch (item.kind) {
+      case "bottomNav":
+        return <TabBar item={item} p={p} s={s} dark={dark} />;
+      case "topAppBar":
+        return <NavBar item={item} s={s} h={h} dark={dark} />;
+      case "listItem":
+        return <Row item={item} p={p} s={s} radii={radii} />;
+      case "searchBar":
+        return <SearchField item={item} s={s} h={h} dark={dark} />;
+      case "tabs":
+        return <Segments item={item} p={p} s={s} h={h} />;
+      case "slider":
+        return <Slider item={item} p={p} s={s} w={w} h={h} />;
+      case "toolbar":
+        return <Toolbar item={item} p={p} s={s} h={h} dark={dark} />;
+      default:
+        return null;
+    }
+  })();
+  return <div style={{ position: "relative", width: w, height: h, fontFamily: FONT, boxSizing: "border-box" }}>{body}</div>;
+}
+```
+
+`components/IosNode.test.tsx` 全文（P3）：
+
+```tsx
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+
+import { KIND_ORDER, MEASURED, PALETTES, Item, makeItem, sizeOf } from "../lib/tokens";
+import { IOS_SKIN_KINDS, IosBody, takesIosSkin } from "./IosNode";
+
+const draw = (item: Item, dark = false) => {
+  const { w, h } = sizeOf(item, {});
+  return renderToStaticMarkup(<IosBody item={item} p={PALETTES[0]} w={w} h={h} dark={dark} />);
+};
+
+describe("iOS canvas skin", () => {
+  it("covers only kinds whose size does not come from how they are drawn", () => {
+    for (const k of IOS_SKIN_KINDS) {
+      expect(MEASURED).not.toContain(k);
+      expect(takesIosSkin(makeItem(k))).toBe(true);
+    }
+  });
+
+  it("leaves every other kind to the Material renderer", () => {
+    for (const k of KIND_ORDER.filter((k) => !IOS_SKIN_KINDS.includes(k))) expect(takesIosSkin(makeItem(k))).toBe(false);
+  });
+
+  it.each(IOS_SKIN_KINDS)("draws %s in the Material part's own box, light and dark", (k) => {
+    const item = makeItem(k);
+    const { w, h } = sizeOf(item, {});
+    for (const dark of [false, true]) {
+      const html = draw(item, dark);
+      expect(html).toContain(`width:${w}px`);
+      expect(html).toContain(`height:${h}px`);
+    }
+  });
+
+  it("shows the words the author typed", () => {
+    const row: Item = { ...makeItem("listItem"), label: "Groceries", supporting: "3 items", switch: true, checked: true };
+    expect(draw(row)).toContain("Groceries");
+    expect(draw(row)).toContain("3 items");
+    const bar: Item = { ...makeItem("topAppBar"), label: "Notes" };
+    expect(draw(bar)).toContain("Notes");
+    const nav: Item = { ...makeItem("bottomNav"), tabs: [{ icon: "home", label: "Home" }, { icon: "star", label: "Saved" }] };
+    expect(draw(nav)).toContain("Saved");
+  });
+});
+```
 
 ## iOS 提示词全文：lib/prompt-ios.ts
 
 `lib/prompt-ios.ts` 存放 iOS 提示词的全部文本，共 399 行。以后要调整 iOS 的写法，只改这个文件，`lib/prompt.ts` 不用再动。本节代码与 `02-ios-prompt.patch` 中的同名文件相同；两者不一致时，以补丁为准。
 
 | 导出              | 用在提示词的哪里                                       | 想改什么就改这里                                            |
-| :---------------- | :----------------------------------------------------- | :---------------------------------------------------------- |
+| ----------------- | ------------------------------------------------------ | ----------------------------------------------------------- |
 | `PH_IOS`          | 开头的介绍、目标设备、平台行；配色说明；样式段的引导句 | 部署目标版本、iPhone 尺寸                                   |
 | `COLOR_MAP_IOS`   | 「配色」段末尾的角色对照                               | M3 角色对应哪个 iOS 颜色                                    |
 | `themeLinesIos`   | 「形状、字体与动效」段的 3 行                          | 圆角、字体、动画曲线                                        |
@@ -373,7 +800,7 @@ export const usePlatform = () => useContext(PlatformContext);
 
 第 1 段（文件头、固定短语、配色、形状字体动效）：
 
-```
+```ts
 /**
  * iOS wording for the prompt generator: SwiftUI, deployment target iOS 26.0, built with
  * the iOS 27 SDK.
@@ -570,15 +997,17 @@ Sonnet 的工作满足以下全部条件时，阶段 1 算完成：
 ### 自动测试
 
 | 测试文件                                                     | 检查内容                                                     | 失败说明什么                         |
-| :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------- |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------ |
 | `lib/prompt-baseline.test.ts`                                | Android、Web 各 4 种语言共 8 份提示词，与改动前逐字一致      | iOS 改动影响了其他平台               |
 | `lib/prompt-ios.test.ts`                                     | 每种部件在 4 种语言下都有 iOS 说明；样式段条数等于所用部件种类数；不含 Jetpack Compose、Room、APK 等 10 个 Android/Web 词；不含「数字+dp/sp」；含 SwiftUI 和 xcodebuild；图标对照只列出用到的图标 | iOS 文本缺项，或混入了 Android 内容  |
 | `lib/prompt.test.ts`                                         | 第 3 行平台行，新增 iOS 断言                                 | `PH_IOS.platform` 与测试中的值不一致 |
 | `lib/project.test.ts`、`lib/share.test.ts`、`lib/tokens.extended.test.ts` | `"ios"` 是合法平台，`"macos"` 不合法                         | `isPlatform` 没有改对                |
 
+阶段 2 新增 `components/IosNode.test.tsx`，检查 4 件事：7 种 iOS 外观部件都不在 `MEASURED` 中；其他部件不换外观；每种部件在浅色和深色下都按 Material 部件的宽高绘制；作者输入的文字会显示出来。
+
 `lib/prompt-ios.test.ts` 全文（手工应用 M2 时使用）：
 
-```
+```ts
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Lang, setGlobalLang } from "./i18n";
@@ -661,7 +1090,7 @@ describe("iOS prompt", () => {
 4. 按下表检查生成的代码。某一项不满足时，修改 `lib/prompt-ios.ts` 中对应的条目。
 
 | 检查项     | 通过标准                                                     | 对应条目                                       |
-| :--------- | :----------------------------------------------------------- | :--------------------------------------------- |
+| ---------- | ------------------------------------------------------------ | ---------------------------------------------- |
 | 标签栏     | 使用 `TabView` + `Tab`；没有自绘标签栏，没有隐藏系统标签栏   | `STYLE_NOTES_IOS.bottomNav`、`GENERAL` 第 8 条 |
 | 导航栏     | 使用 `NavigationStack` + `.navigationTitle` + `.toolbar`；没有 `.toolbarBackground` | `STYLE_NOTES_IOS.topAppBar`                    |
 | 玻璃范围   | `.glassEffect` 和 `.glass` 只出现在悬浮控件上，卡片和列表行没有 | `GENERAL` 第 9 条                              |
@@ -707,7 +1136,7 @@ Sonnet 只需按第 5 节执行命令和替换文本，不需要做设计判断�
 
 第 2 段（部件样式说明：英文）：
 
-```
+```ts
 /* ---------- per-component SwiftUI notes ---------- */
 
 const STYLE_NOTES_IOS: {
@@ -758,7 +1187,7 @@ const STYLE_NOTES_IOS: {
 
 第 3 段（部件样式说明：中文）：
 
-```
+```ts
   zh: {
     box: "容器框 → 普通容器：用 `RoundedRectangle(cornerRadius:style: .continuous)` 按对照表的颜色填充，圆角取屏幕结构中给出的值，作为叠放在其上的组件的背景（ZStack，后写的在前面）。它没有自身行为，也不用 Liquid Glass。",
     bottomSheet: "底部面板 → `.sheet(isPresented:)`，加 `.presentationDetents([.medium, .large])` 和 `.presentationDragIndicator(.visible)`。拖动条、圆角以及部分高度时内缩的 Liquid Glass 背景都由系统提供：部分高度时不要设置不透明的 `.presentationBackground`。",
@@ -807,7 +1236,7 @@ export const styleNoteIos = (k: Kind, lang: Lang): string => STYLE_NOTES_IOS[lan
 
 第 4 段（整体原则、交付物、图标对照、单位换算）：
 
-```
+```ts
 /* ---------- closing guidance ---------- */
 
 const GENERAL_EN = [

@@ -133,6 +133,7 @@ import { ShareDialog } from "@/components/ShareMenu";
 import { ColorPanel } from "@/components/ColorPanel";
 import { MotionPanel, ShapePanel, TypePanel } from "@/components/ThemePanel";
 import { ThemeContext, ensureFontLoaded, ensureLangFontLoaded } from "@/lib/theme";
+import { PlatformContext } from "@/lib/platform";
 import { BottomSheet, MobileActionBar, MobileInspector, MobileLang, MobileSettings } from "@/components/Mobile";
 import { ConfirmDialog, IconBtn, Segmented } from "@/components/ui";
 import { Lang, LangContext, SEED_TEXT, getLang, setGlobalLang, t, translateDefaultFrameName, translateDefaultText } from "@/lib/i18n";
@@ -3788,6 +3789,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   return (
     <LangContext.Provider value={lang}>
     <ThemeContext.Provider value={theme}>
+    <PlatformContext.Provider value={platform ?? defaultPlatformOf(frames, frame)}>
       <div
         className={`app-root${revealing ? " m3e-reveal" : ""}${widthDragId || sizeEditId ? " m3-size-now" : ""}`}
         /* the preview sits outside this tree and owns the keyboard while it is up */
@@ -4859,6 +4861,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
             </div>
         </div>
       )}
+    </PlatformContext.Provider>
     </ThemeContext.Provider>
     </LangContext.Provider>
   );

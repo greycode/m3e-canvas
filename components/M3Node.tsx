@@ -70,6 +70,8 @@ import { CircularProgress, LinearProgress, LoadingIndicator } from "./Loading";
 import { CarouselBody, DatePickerBody, TimePickerBody } from "./Pickers";
 import { t, useLang } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
+import { usePlatform } from "@/lib/platform";
+import { IosBody, takesIosSkin } from "./IosNode";
 import { railSelectedLabelColor } from "@/lib/color";
 
 /** weight of a heading or label: heavier under the emphasized type setting */
@@ -1829,6 +1831,8 @@ export function M3Node({
   lit?: { x: number; y: number; at?: number; grown?: boolean } | null;
 }) {
   const reducedMotion = useReducedMotion();
+  const platform = usePlatform();
+  const dark = useTheme().dark;
   const instantRail = reducedMotion && item.kind === "navRail" && isWideRail(item);
   const radiusTransition = instantRail ? { duration: 0 } : RADIUS_TWEEN;
   /* a menu on its way out is still drawn open, so the part is measured and boxed as it looks */
@@ -1870,6 +1874,34 @@ export function M3Node({
         },
       ]
     : ripples.list;
+
+  /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
+  if (platform === "ios" && takesIosSkin(drawn))
+    return (
+      <div
+        data-node={item.id}
+        data-kind={item.kind}
+        data-skin="ios"
+        onPointerDown={onPointerDown}
+        style={{
+          width: size.w,
+          height: size.h,
+          flex: "0 0 auto",
+          position: selected && inRun ? "relative" : undefined,
+          zIndex: selected && inRun ? 1 : undefined,
+          cursor: !interactive ? "default" : dragging ? "grabbing" : "grab",
+          userSelect: "none",
+          touchAction: "none",
+          boxSizing: "border-box",
+          borderRadius: `${r.tl}px ${r.tr}px ${r.br}px ${r.bl}px`,
+          outline: selected ? `2px solid ${palette.primary}` : "2px solid transparent",
+          outlineOffset: 3,
+          transition: "outline-color 120ms",
+        }}
+      >
+        <IosBody item={drawn} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+      </div>
+    );
 
   return (
     <motion.div
@@ -1947,9 +1979,17 @@ export function M3Static({
   radii?: Radii;
   style?: React.CSSProperties;
 }) {
+  const platform = usePlatform();
+  const dark = useTheme().dark;
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
   const measured = isMeasured(item);
+  if (platform === "ios" && takesIosSkin(item))
+    return (
+      <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
+        <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+      </div>
+    );
   const clips = !NO_BOX.includes(item.kind) && !menuOpen(item) && item.kind !== "textField" && item.kind !== "select";
   return (
     <div
