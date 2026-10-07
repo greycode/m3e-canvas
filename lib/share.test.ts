@@ -1,6 +1,6 @@
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DOC_PARAM, DOCZ_PARAM, hasShareHash, readShareHash, shareable, shareLink } from "./share";
+import { DOC_PARAM, DOCZ_PARAM, hasShareHash, readPastedDoc, readShareHash, shareable, shareLink } from "./share";
 import type { Doc, Item } from "./tokens";
 
 const doc = (): Doc => ({
@@ -178,5 +178,37 @@ describe("hasShareHash", () => {
 
   it.each(["", "#", "#other=doc", "#document=x", "#DOC=x", "#other=docz%3Dx", "#mydoc=x"])("does not mistake unrelated hash %s for a project", (hash) => {
     expect(hasShareHash(hash)).toBe(false);
+  });
+});
+
+describe("readPastedDoc", () => {
+  it("reads a compressed share link pasted on its own", async () => {
+    await expect(readPastedDoc(`https://example.test/canvas/${packedHash(JSON.stringify(doc()))}`)).resolves.toEqual(doc());
+  });
+
+  it("reads a share link pasted inside prose with trailing punctuation and parameters", async () => {
+    const link = `https://example.test/canvas/${packedHash(JSON.stringify(doc()))}&utm_source=agent`;
+    await expect(readPastedDoc(`设计好了：${link}。请查收`)).resolves.toEqual(doc());
+  });
+
+  it("reads a percent-encoded link pasted inside prose", async () => {
+    await expect(readPastedDoc(`Here it is: https://example.test/canvas/${plainHash(doc())}。`)).resolves.toEqual(doc());
+  });
+
+  it.each([
+    ["plain JSON", (json: string) => json],
+    ["a bare code fence", (json: string) => `\`\`\`\n${json}\n\`\`\``],
+    ["a json code fence with prose", (json: string) => `好的，这是设计：\n\`\`\`json\n${json}\n\`\`\`\n需要我调整吗？`],
+  ])("reads the design JSON as %s", async (_name, wrap) => {
+    await expect(readPastedDoc(wrap(JSON.stringify(doc())))).resolves.toEqual(doc());
+  });
+
+  it("returns null when the paste holds no design", async () => {
+    await expect(readPastedDoc("")).resolves.toBeNull();
+    await expect(readPastedDoc("这个模型只会聊天。")).resolves.toBeNull();
+    await expect(readPastedDoc("{}")).resolves.toBeNull();
+    await expect(readPastedDoc("{oops}")).resolves.toBeNull();
+    await expect(readPastedDoc("```json\n{\"groups\": []\n")).resolves.toBeNull();
+    await expect(readPastedDoc(JSON.stringify({ ...doc(), platform: "ios" }))).resolves.toBeNull();
   });
 });

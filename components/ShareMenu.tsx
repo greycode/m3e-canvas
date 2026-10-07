@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Doc, Palette } from "@/lib/tokens";
-import { shareLink } from "@/lib/share";
+import { readPastedDoc, shareLink } from "@/lib/share";
 import { Icon } from "./M3Node";
 import { t, useLang } from "@/lib/i18n";
 
@@ -50,7 +50,8 @@ const Beta = ({ p }: { p: Palette }) => (
 );
 
 /** Ask an AI (beta): write the idea and have the author's own model draft it, or copy the
- *  instruction for a coding agent. The title row carries a link to the design as it is now. */
+ *  instruction for a coding agent and paste its reply back. The title row carries a link to
+ *  the design as it is now. */
 export function ShareDialog({
   p,
   doc,
@@ -60,6 +61,7 @@ export function ShareDialog({
   open,
   onClose,
   onDraft,
+  onPasted,
   onSetupAi,
 }: {
   p: Palette;
@@ -72,20 +74,26 @@ export function ShareDialog({
   onClose: () => void;
   /** the idea, for the author's own model to draft */
   onDraft: (idea: string) => void;
+  /** a design read back from a pasted share link or JSON, ready for the canvas */
+  onPasted: (doc: Doc) => void;
   /** opens the AI settings so a key can be entered */
   onSetupAi: () => void;
 }) {
   const lang = useLang();
   const [copied, setCopied] = useState<"ask" | "link" | null>(null);
+  const [pasteFail, setPasteFail] = useState(false);
   useEffect(() => {
     if (!copied) return;
     const id = setTimeout(() => setCopied(null), copied === "ask" ? 4000 : 1400);
     return () => clearTimeout(id);
   }, [copied]);
-  /* a fresh dialog starts without a "copied" mark; kept apart from the key handler, whose
-     onClose changes identity on every render of the page */
+  /* a fresh dialog starts without a "copied" mark or a paste error; kept apart from the key
+     handler, whose onClose changes identity on every render of the page */
   useEffect(() => {
-    if (open) setCopied(null);
+    if (open) {
+      setCopied(null);
+      setPasteFail(false);
+    }
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -111,6 +119,18 @@ export function ShareDialog({
       await navigator.clipboard.writeText(await shareLink(doc, appUrl()));
       setCopied("link");
     } catch {}
+  };
+  /* the reply an outside model produced: a share link or the JSON, with whatever prose or
+     code fence came around it; nothing usable leaves the error by the button */
+  const pasteResult = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const next = text.trim() ? await readPastedDoc(text) : null;
+      if (next) onPasted(next);
+      else setPasteFail(true);
+    } catch {
+      setPasteFail(true);
+    }
   };
 
   /* a connected pair, the way the canvas draws connected buttons: outer corners round, inner ones tight */
@@ -211,6 +231,11 @@ export function ShareDialog({
                 resize: "none",
               }}
             />
+            {/* the reply from an outside model comes straight off the clipboard onto the canvas */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {pill("content_paste", t("askAiPaste", lang), () => void pasteResult(), { title: t("askAiPasteTitle", lang) })}
+              {pasteFail && <span style={{ minWidth: 0, fontSize: 13, lineHeight: 1.45, color: p.error }}>{t("askAiPasteFail", lang)}</span>}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {/* the left of the row: where to paste after a copy, or how to unlock drafting */}
               <span style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: copied === "ask" ? 600 : 400, color: copied === "ask" ? p.primary : p.onSurfaceVariant }}>

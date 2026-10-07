@@ -4769,6 +4769,10 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           open={shareOpen}
           onClose={() => setShareOpen(false)}
           onDraft={(idea) => void startDraft(idea)}
+          onPasted={(next) => {
+            setShareOpen(false);
+            arrive(next);
+          }}
           onSetupAi={() => {
             setShareOpen(false);
             setLeftOpen(true);

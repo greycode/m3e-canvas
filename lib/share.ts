@@ -77,3 +77,25 @@ export const hasShareHash = (hash: string) => {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   return params.has(DOCZ_PARAM) || params.has(DOC_PARAM);
 };
+
+/** a share link pasted among other text: from its # to the first whitespace, quote or angle bracket */
+const PASTED_LINK = /#(?:docz|doc)=[^\s"'<>]+/;
+
+/** the design a pasted model reply carries: a share link anywhere in the text, or the JSON
+ *  itself with prose or a code fence around it, or null when neither holds a project */
+export async function readPastedDoc(text: string): Promise<Doc | null> {
+  const link = PASTED_LINK.exec(text)?.[0];
+  /* the value may have picked up trailing punctuation or closing brackets; strip what
+     cannot belong to a docz (base64url) or doc (percent-encoded) value */
+  if (link) return readShareHash(link.replace(/[^\w%!.~*'()-]+$/, ""));
+  const cleaned = text.replace(/```(?:json)?/gi, "");
+  const a = cleaned.indexOf("{");
+  const b = cleaned.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try {
+    const value: unknown = JSON.parse(cleaned.slice(a, b + 1));
+    return isProject(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
