@@ -1,5 +1,6 @@
 "use client";
 
+import { CUSTOM_KIND_TEXT } from "./custom";
 import { IOS_KIND_TEXT } from "./iosKinds";
 
 import { createContext, useContext } from "react";
@@ -624,6 +625,7 @@ export const KIND_TEXT: Record<
     datePicker: { noun: "日付ピッカー", label: "3月17日（月）" },
     timePicker: { noun: "時刻ピッカー" },
     ...IOS_KIND_TEXT.ja,
+    custom: CUSTOM_KIND_TEXT.ja,
   },
   en: {
     box: { noun: "box" },
@@ -663,6 +665,7 @@ export const KIND_TEXT: Record<
     datePicker: { noun: "date picker", label: "Mon, Mar 17" },
     timePicker: { noun: "time picker" },
     ...IOS_KIND_TEXT.en,
+    custom: CUSTOM_KIND_TEXT.en,
   },
   zh: {
     box: { noun: "容器框" },
@@ -702,6 +705,7 @@ export const KIND_TEXT: Record<
     datePicker: { noun: "日期选择器", label: "3月17日 周一" },
     timePicker: { noun: "时间选择器" },
     ...IOS_KIND_TEXT.zh,
+    custom: CUSTOM_KIND_TEXT.zh,
   },
   ko: {
     box: { noun: "상자" },
@@ -741,6 +745,7 @@ export const KIND_TEXT: Record<
     datePicker: { noun: "날짜 선택기", label: "3월 17일 (월)" },
     timePicker: { noun: "시간 선택기" },
     ...IOS_KIND_TEXT.ko,
+    custom: CUSTOM_KIND_TEXT.ko,
   },
 };
 

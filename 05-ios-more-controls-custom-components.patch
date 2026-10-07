@@ -1,0 +1,2004 @@
+diff --git a/components/CustomNode.test.tsx b/components/CustomNode.test.tsx
+new file mode 100644
+index 0000000..088f332
+--- /dev/null
++++ b/components/CustomNode.test.tsx
+@@ -0,0 +1,112 @@
++import { renderToStaticMarkup } from "react-dom/server";
++import { afterEach, describe, expect, it } from "vitest";
++
++import { CustomDef, countOf, customSizeOf, fillIn, holds, isCustomDef } from "../lib/custom";
++import { setGlobalLang } from "../lib/i18n";
++import { isProject } from "../lib/project";
++import { buildPrompt } from "../lib/prompt";
++import { Doc, Item, PALETTES, makeItem } from "../lib/tokens";
++import { CustomBody } from "./CustomNode";
++
++const STARS: CustomDef = {
++  name: "RatingStars",
++  description: "A read-only 0–5 star rating.",
++  props: { rating: "3" },
++  w: 380,
++  h: 44,
++  layout: {
++    type: "hstack",
++    spacing: 4,
++    children: [
++      {
++        type: "repeat",
++        count: 5,
++        child: {
++          type: "zstack",
++          children: [
++            { type: "icon", name: "sf:star.fill", color: "orange", if: "{{i}} <= {{rating}}" },
++            { type: "icon", name: "sf:star", color: "tertiary", if: "{{i}} > {{rating}}" },
++          ],
++        },
++      },
++      { type: "text", text: "{{rating}} of 5", size: 15, color: "secondary" },
++    ],
++  },
++  swiftui: "struct RatingStars: View {\n  let rating: Int\n  var body: some View { Text(\"\\(rating)\") }\n}",
++};
++
++const instance = (id: string, rating?: string, def: CustomDef = STARS): Item => ({ ...makeItem("custom"), id, custom: def, ...(rating ? { props: { rating } } : {}) });
++
++function doc(platform: Doc["platform"], items: Item[]): Doc {
++  return {
++    groups: items.map((it, i) => ({ id: `g${i}`, x: 16, y: 24 + i * 60, axis: "x" as const, items: [it] })),
++    frames: [{ id: "f", name: "Home", x: 0, y: 0 }],
++    paletteKey: "purple",
++    frame: "phone",
++    platform,
++    title: "T",
++    brief: "",
++  };
++}
++
++describe("custom components", () => {
++  afterEach(() => setGlobalLang("ja"));
++
++  it("accept a well-formed definition and refuse unsafe or oversized ones", () => {
++    expect(isCustomDef(STARS)).toBe(true);
++    expect(isCustomDef({ ...STARS, name: "ratingStars" })).toBe(false);
++    expect(isCustomDef({ ...STARS, layout: { type: "script", text: "alert(1)" } })).toBe(false);
++    expect(isCustomDef({ ...STARS, layout: { type: "image", src: "http://example.com/a.png" } })).toBe(false);
++    expect(isCustomDef({ ...STARS, layout: { type: "image", src: "javascript:alert(1)" } })).toBe(false);
++    expect(isCustomDef({ ...STARS, layout: { type: "text", text: "x", color: "url(evil)" } })).toBe(false);
++    const deep = Array.from({ length: 12 }).reduce<object>((child) => ({ type: "vstack", children: [child] }), { type: "spacer" });
++    expect(isCustomDef({ ...STARS, layout: deep })).toBe(false);
++    const wide = { type: "vstack", children: Array.from({ length: 5 }, () => ({ type: "hstack", children: Array.from({ length: 40 }, () => ({ type: "spacer" })) })) };
++    expect(isCustomDef({ ...STARS, layout: wide })).toBe(false);
++  });
++
++  it("fill templates, test conditions and bound repeats", () => {
++    expect(fillIn("{{rating}} of 5", { rating: "4" })).toBe("4 of 5");
++    expect(holds("{{i}} <= {{rating}}", { i: "3", rating: "4" })).toBe(true);
++    expect(holds("{{i}} > {{rating}}", { i: "3", rating: "4" })).toBe(false);
++    expect(holds("{{state}} == done", { state: "done" })).toBe(true);
++    expect(countOf("{{n}}", { n: "999" })).toBe(50);
++    expect(customSizeOf(instance("a"))).toEqual({ w: 380, h: 44 });
++  });
++
++  it("draw the stars the instance's rating asks for", () => {
++    setGlobalLang("en");
++    const html = renderToStaticMarkup(<CustomBody item={instance("a", "4")} p={PALETTES[0]} w={380} h={44} dark={false} />);
++    expect(html.match(/data-fill="1"/g)).toHaveLength(4);
++    expect(html).toContain("4 of 5");
++    const empty = renderToStaticMarkup(<CustomBody item={makeItem("custom")} p={PALETTES[0]} w={380} h={120} dark={false} />);
++    expect(empty).toContain("width:380px");
++  });
++
++  it("are described once and reused by every instance in the prompt", () => {
++    setGlobalLang("en");
++    const items = [instance("a", "4"), instance("b", "5")];
++    const ios = buildPrompt(doc("ios", items), {}, undefined, "en");
++    expect(ios.match(/## Custom components/g)).toHaveLength(1);
++    expect(ios.match(/- RatingStars:/g)).toHaveLength(1);
++    expect(ios).toContain('the custom component RatingStars (rating "4")');
++    expect(ios).toContain('the custom component RatingStars (rating "5")');
++    expect(ios).toContain("ForEach(1...5, id: \\.self) { i in");
++    expect(ios).toContain("if i <= rating {");
++    expect(ios).toContain('Image(systemName: "star.fill")');
++    expect(ios).toContain("struct RatingStars: View");
++    const android = buildPrompt(doc("android", items), {}, undefined, "en");
++    expect(android).toContain("## Custom components");
++    expect(android).toContain("repeat 5 times as i");
++    expect(android).not.toContain("struct RatingStars");
++    expect(android).not.toContain("sf:");
++    const zh = buildPrompt(doc("ios", items), {}, undefined, "zh");
++    expect(zh).toContain("## 自定义组件");
++  });
++
++  it("travel in project files and links, and a broken definition is refused", () => {
++    expect(isProject(doc("ios", [instance("a", "4")]))).toBe(true);
++    expect(isProject(doc("ios", [{ ...instance("a"), custom: { ...STARS, layout: { type: "iframe" } } } as unknown as Item]))).toBe(false);
++    expect(isProject(doc("ios", [{ ...instance("a"), props: { "bad key": "1" } }]))).toBe(false);
++  });
++});
+diff --git a/components/CustomNode.tsx b/components/CustomNode.tsx
+new file mode 100644
+index 0000000..2a3c51e
+--- /dev/null
++++ b/components/CustomNode.tsx
+@@ -0,0 +1,143 @@
++"use client";
++
++import type { CSSProperties, ReactNode } from "react";
++import { ColorRef, CustomNode as Node, countOf, fillIn, holds, varsOf } from "../lib/custom";
++import { usePlatform } from "../lib/platform";
++import type { Item, Palette } from "../lib/tokens";
++import { FONT, Glyph, center, glass, sys } from "./iosStyle";
++
++/* A custom component drawn from its definition's layout tree (lib/custom.ts). Nothing in a
++ * definition runs: nodes map to elements, strings are text, pictures are https only. Colors
++ * name roles, which follow the target: iOS system colors on iOS, the Material palette elsewhere. */
++
++const SYSTEM: Record<string, [string, string]> = {
++  red: ["#FF3B30", "#FF453A"],
++  orange: ["#FF9500", "#FF9F0A"],
++  yellow: ["#FFCC00", "#FFD60A"],
++  green: ["#34C759", "#30D158"],
++  blue: ["#007AFF", "#0A84FF"],
++  purple: ["#AF52DE", "#BF5AF2"],
++};
++const WEIGHT = { regular: 400, medium: 500, semibold: 600, bold: 700 } as const;
++const ALIGN = { start: "flex-start", center: "center", end: "flex-end" } as const;
++
++export function CustomBody({ item, p, w, h, dark }: { item: Item; p: Palette; w: number; h: number; dark: boolean }) {
++  const ios = usePlatform() === "ios";
++  const s = sys(dark);
++  const color = (c?: ColorRef): string | undefined => {
++    if (!c) return undefined;
++    if (c.startsWith("#")) return c;
++    switch (c) {
++      case "primary":
++        return p.primary;
++      case "onPrimary":
++        return p.onPrimary;
++      case "label":
++        return ios ? s.label : p.onSurface;
++      case "secondary":
++        return ios ? s.secondary : p.onSurfaceVariant;
++      case "tertiary":
++        return ios ? s.tertiary : p.outline;
++      case "fill":
++        return ios ? s.fill : p.surfaceContainerHighest;
++      case "row":
++        return ios ? s.row : p.surfaceContainerLow;
++      case "white":
++        return "#FFFFFF";
++      case "black":
++        return "#000000";
++      default:
++        return SYSTEM[c]?.[dark ? 1 : 0];
++    }
++  };
++  const ink = color("label")!;
++  const def = item.custom;
++
++  if (!def?.layout)
++    return (
++      <div style={{ ...center, position: "relative", width: w, height: h, flexDirection: "column", gap: 4, boxSizing: "border-box", borderRadius: 16, border: `1.5px dashed ${color("tertiary")}`, color: color("secondary"), fontSize: 13 }}>
++        <Glyph name="widgets" size={24} color={color("secondary")!} />
++        {def?.name ?? "Custom component"}
++      </div>
++    );
++
++  const draw = (n: Node, vars: Record<string, string>, key: string, root = false): ReactNode => {
++    if (!holds(n.if, vars)) return null;
++    switch (n.type) {
++      case "vstack":
++      case "hstack":
++      case "zstack": {
++        const style: CSSProperties = {
++          display: n.type === "zstack" ? "grid" : "flex",
++          flexDirection: n.type === "vstack" ? "column" : "row",
++          gap: n.type === "zstack" ? undefined : (n.spacing ?? 8),
++          alignItems: ALIGN[n.align ?? "center"],
++          justifyItems: n.type === "zstack" ? ALIGN[n.align ?? "center"] : undefined,
++          padding: n.padding,
++          background: color(n.fill),
++          borderRadius: n.radius,
++          flex: n.grow ? 1 : undefined,
++          minWidth: 0,
++          minHeight: 0,
++          boxSizing: "border-box",
++          ...(root ? { width: "100%", height: "100%" } : {}),
++          ...(n.glass ? (ios ? glass(dark, false) : { background: p.surfaceContainerHigh, boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }) : {}),
++        };
++        return (
++          <div key={key} style={style}>
++            {n.children.map((c, i) => (n.type === "zstack" ? <div key={i} style={{ gridArea: "1 / 1", display: "flex" }}>{draw(c, vars, `${key}.${i}`)}</div> : draw(c, vars, `${key}.${i}`)))}
++          </div>
++        );
++      }
++      case "text":
++        return (
++          <span
++            key={key}
++            style={{
++              fontSize: n.size ?? 17,
++              fontWeight: WEIGHT[n.weight ?? "regular"],
++              lineHeight: 1.25,
++              color: color(n.color) ?? ink,
++              minWidth: 0,
++              ...(n.lines ? { display: "-webkit-box", WebkitLineClamp: n.lines, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}),
++            }}
++          >
++            {fillIn(n.text, vars)}
++          </span>
++        );
++      case "icon":
++        return <Glyph key={key} name={fillIn(n.name, vars) || "help"} size={n.size ?? 20} color={color(n.color) ?? ink} />;
++      case "shape": {
++        const round = n.shape === "circle" || n.shape === "capsule";
++        return <div key={key} style={{ flex: "0 0 auto", width: n.w, height: n.h ?? (n.shape === "circle" ? n.w : undefined), borderRadius: round ? 999 : n.radius, background: color(n.fill) ?? p.primary }} />;
++      }
++      case "image":
++        return n.src ? (
++          // eslint-disable-next-line @next/next/no-img-element
++          <img key={key} src={n.src} alt="" style={{ flex: "0 0 auto", width: n.w ?? "100%", height: n.h, objectFit: "cover", borderRadius: n.radius }} />
++        ) : (
++          <div key={key} style={{ ...center, flex: "0 0 auto", width: n.w ?? "100%", height: n.h ?? 80, borderRadius: n.radius, background: color("fill") }}>
++            <Glyph name="image" size={24} color={color("tertiary")!} />
++          </div>
++        );
++      case "spacer":
++        return <div key={key} style={n.size ? { flex: "0 0 auto", width: n.size, height: n.size } : { flex: 1 }} />;
++      case "progress": {
++        const v = Math.min(100, Math.max(0, Number(typeof n.value === "number" ? n.value : fillIn(n.value, vars)) || 0));
++        return (
++          <div key={key} style={{ alignSelf: "stretch", height: 6, borderRadius: 3, background: color("fill") }}>
++            <div style={{ width: `${v}%`, height: 6, borderRadius: 3, background: color(n.color) ?? p.primary }} />
++          </div>
++        );
++      }
++      case "repeat":
++        return Array.from({ length: countOf(n.count, vars) }, (_, k) => draw(n.child, { ...vars, i: String(k + 1) }, `${key}.${k}`));
++    }
++  };
++
++  return (
++    <div style={{ position: "relative", display: "flex", width: w, height: h, overflow: "hidden", boxSizing: "border-box", fontFamily: ios ? FONT : undefined }}>
++      {draw(def.layout, varsOf(item), "r", true)}
++    </div>
++  );
++}
+diff --git a/components/IosCharts.tsx b/components/IosCharts.tsx
+index 9532808..5dc8fef 100644
+--- a/components/IosCharts.tsx
++++ b/components/IosCharts.tsx
+@@ -1,25 +1,73 @@
+ "use client";
+ 
++import type { ReactNode } from "react";
+ import type { Item, Palette } from "../lib/tokens";
+ import { Sys, oneLine } from "./iosStyle";
+ 
+-/* Swift Charts, sketched: a card with the title and subtitle over the plot. The heights are
++/* Swift Charts, sketched: a card with the title and subtitle over the plot. The values are
+  * illustrative only; the prompt asks the code model for the app's real data. */
+ 
+ /** the illustrative values, one per category in order */
+ const SHAPE = [0.62, 0.85, 0.48, 0.92, 0.7, 0.55, 0.78, 0.66, 0.9, 0.5, 0.73, 0.6];
+-/** the slice colors: the accent first, then the iOS system colors */
++/** the series colors: the accent first, then the iOS system colors */
+ const series = (p: Palette) => [p.primary, "#34C759", "#FF9500", "#5AC8FA", "#FF2D55", "#AF52DE", "#FFCC00", "#8E8E93"];
+ const f = (n: number) => n.toFixed(1);
++/** a fixed pseudo-random sequence, so a sketch looks the same on every render */
++const noise = (seed: number) => {
++  let x = (seed * 9301 + 49297) % 233280;
++  return () => {
++    x = (x * 9301 + 49297) % 233280;
++    return x / 233280;
++  };
++};
+ 
+-/** bars, a line or an area over the categories, with dashed gridlines and the trailing axis Swift Charts draws on iOS */
+-function XYPlot({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
+-  const labels = (item.tabs ?? []).map((t) => t.label);
++type Plot = { item: Item; p: Palette; s: Sys; w: number; h: number };
++const labelsOf = (item: Item) => (item.tabs ?? []).map((t) => t.label);
++
++/** the dashed gridlines and the trailing axis Swift Charts draws on iOS */
++function Grid({ pw, ph, s }: { pw: number; ph: number; s: Sys }) {
++  return (
++    <>
++      {[0, 0.5, 1].map((g) => (
++        <g key={g}>
++          <line x1={0} x2={pw} y1={f(ph * g)} y2={f(ph * g)} stroke={s.separator} strokeDasharray="2 3" />
++          <text x={pw + 6} y={f(ph * g + 4)} fontSize={11} fill={s.secondary}>
++            {Math.round((1 - g) * 100)}
++          </text>
++        </g>
++      ))}
++    </>
++  );
++}
++
++/** the category labels under the plot */
++const XLabels = ({ labels, x, y, s }: { labels: string[]; x: (i: number) => number; y: number; s: Sys }) => (
++  <>
++    {labels.map((l, i) => (
++      <text key={i} x={f(x(i))} y={y} fontSize={11} textAnchor="middle" fill={s.secondary}>
++        {l}
++      </text>
++    ))}
++  </>
++);
++
++const Legend = ({ labels, colors, s }: { labels: string[]; colors: string[]; s: Sys }) => (
++  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px", marginTop: 8 }}>
++    {labels.map((l, i) => (
++      <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: s.secondary }}>
++        <span style={{ width: 8, height: 8, borderRadius: 999, background: colors[i % colors.length] }} />
++        {l}
++      </span>
++    ))}
++  </div>
++);
++
++/** bars, a line or an area over the categories */
++function XYPlot({ item, p, s, w, h }: Plot) {
++  const labels = labelsOf(item);
+   const n = Math.max(1, labels.length);
+-  const axisW = 28;
+-  const axisH = 18;
+-  const pw = Math.max(1, w - axisW);
+-  const ph = Math.max(1, h - axisH);
++  const pw = Math.max(1, w - 28);
++  const ph = Math.max(1, h - 18);
+   const slot = pw / n;
+   const x = (i: number) => slot * (i + 0.5);
+   const y = (i: number) => ph - SHAPE[i % SHAPE.length] * ph * 0.92;
+@@ -33,37 +81,86 @@ function XYPlot({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: numbe
+           <stop offset="1" stopColor={p.primary} stopOpacity={0.03} />
+         </linearGradient>
+       </defs>
+-      {[0, 0.5, 1].map((g) => (
+-        <g key={g}>
+-          <line x1={0} x2={pw} y1={f(ph * g)} y2={f(ph * g)} stroke={s.separator} strokeDasharray="2 3" />
+-          <text x={pw + 6} y={f(ph * g + 4)} fontSize={11} fill={s.secondary}>
+-            {Math.round((1 - g) * 100)}
+-          </text>
+-        </g>
+-      ))}
++      <Grid pw={pw} ph={ph} s={s} />
+       {item.kind === "barChart" &&
+         labels.map((_, i) => {
+           const bw = slot * 0.55;
+           return <rect key={i} x={f(x(i) - bw / 2)} y={f(y(i))} width={f(bw)} height={f(ph - y(i))} rx={4} fill={p.primary} />;
+         })}
++      {item.kind === "stackedBarChart" &&
++        labels.map((_, i) => {
++          const bw = slot * 0.55;
++          const total = SHAPE[i % SHAPE.length] * ph * 0.92;
++          const parts = [0.5, 0.3, 0.2].map((share, k) => share + (k === 0 ? 0.08 : -0.04) * Math.sin(i + k));
++          let top = ph;
++          return parts.map((share, k) => {
++            const hh = total * share;
++            top -= hh;
++            return <rect key={`${i}.${k}`} x={f(x(i) - bw / 2)} y={f(top)} width={f(bw)} height={f(Math.max(0, hh - 1))} rx={k === parts.length - 1 ? 4 : 1} fill={series(p)[k]} />;
++          });
++        })}
+       {item.kind === "areaChart" && <path d={`${line}L${f(x(n - 1))} ${ph}L${f(x(0))} ${ph}Z`} fill={`url(#${gradient})`} />}
+       {(item.kind === "lineChart" || item.kind === "areaChart") && <path d={line} fill="none" stroke={p.primary} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
+       {item.kind === "lineChart" && labels.map((_, i) => <circle key={i} cx={f(x(i))} cy={f(y(i))} r={3.5} fill={p.primary} stroke={s.row} strokeWidth={1.5} />)}
+-      {labels.map((l, i) => (
+-        <text key={i} x={f(x(i))} y={ph + 13} fontSize={11} textAnchor="middle" fill={s.secondary}>
+-          {l}
+-        </text>
+-      ))}
++      <XLabels labels={labels} x={x} y={ph + 13} s={s} />
++    </svg>
++  );
++}
++
++/** points, one color and shape per series, with the legend underneath */
++function Scatter({ item, p, s, w, h }: Plot) {
++  const labels = labelsOf(item);
++  const colors = series(p);
++  const pw = Math.max(1, w - 28);
++  const ph = Math.max(1, h - 28);
++  return (
++    <div>
++      <svg width={w} height={ph} aria-hidden style={{ display: "block", overflow: "visible" }}>
++        <Grid pw={pw} ph={ph} s={s} />
++        {labels.flatMap((_, k) => {
++          const r = noise(k + 3);
++          return Array.from({ length: 14 }, (_, j) => {
++            const px = ((j + r()) / 14) * pw;
++            const py = ph - (0.15 + 0.6 * (j / 14) + 0.25 * r() - 0.12 * k) * ph;
++            const cy = Math.min(ph - 4, Math.max(4, py));
++            return k % 2 ? <rect key={`${k}.${j}`} x={f(px - 3.5)} y={f(cy - 3.5)} width={7} height={7} fill={colors[k % colors.length]} /> : <circle key={`${k}.${j}`} cx={f(px)} cy={f(cy)} r={4} fill={colors[k % colors.length]} />;
++          });
++        })}
++      </svg>
++      <Legend labels={labels} colors={colors} s={s} />
++    </div>
++  );
++}
++
++/** a grid of RectangleMarks, five weeks deep, darker where there is more */
++function Heatmap({ item, p, s, w, h }: Plot) {
++  const labels = labelsOf(item);
++  const cols = Math.max(1, labels.length);
++  const rows = 5;
++  const gap = 3;
++  const ph = Math.max(1, h - 18);
++  const cw = (w - gap * (cols - 1)) / cols;
++  const ch = (ph - gap * (rows - 1)) / rows;
++  const r = noise(cols + 11);
++  const cells: ReactNode[] = [];
++  for (let row = 0; row < rows; row++)
++    for (let c = 0; c < cols; c++) {
++      const v = 0.12 + 0.88 * r();
++      cells.push(<rect key={`${row}.${c}`} x={f(c * (cw + gap))} y={f(row * (ch + gap))} width={f(cw)} height={f(ch)} rx={4} fill={p.primary} fillOpacity={f(v)} />);
++    }
++  return (
++    <svg width={w} height={h} aria-hidden style={{ display: "block" }}>
++      {cells}
++      <XLabels labels={labels} x={(i) => i * (cw + gap) + cw / 2} y={ph + 13} s={s} />
+     </svg>
+   );
+ }
+ 
+ /** a donut of SectorMarks: inner radius 0.618 of the outer, 1.5° between slices, the legend underneath */
+-function Donut({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
+-  const labels = (item.tabs ?? []).map((t) => t.label);
++function Donut({ item, p, s, w, h }: Plot) {
++  const labels = labelsOf(item);
+   const colors = series(p);
+-  const legendH = 28;
+-  const d = Math.max(20, Math.min(w, h - legendH));
++  const d = Math.max(20, Math.min(w, h - 28));
+   const cx = w / 2;
+   const cy = d / 2;
+   const R = d / 2;
+@@ -85,30 +182,24 @@ function Donut({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number
+       <svg width={w} height={d} aria-hidden style={{ display: "block" }}>
+         {slices}
+       </svg>
+-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px", marginTop: 8 }}>
+-        {labels.map((l, i) => (
+-          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: s.secondary }}>
+-            <span style={{ width: 8, height: 8, borderRadius: 999, background: colors[i % colors.length] }} />
+-            {l}
+-          </span>
+-        ))}
+-      </div>
++      <Legend labels={labels} colors={colors} s={s} />
+     </div>
+   );
+ }
+ 
+ /** one Swift Charts part in its box: a grouped card with the title, the subtitle and the plot */
+-export function IosChart({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
++export function IosChart({ item, p, s, w, h }: Plot) {
+   const pad = 16;
+   const sub = !!item.supporting?.trim();
+   const head = 22 + (sub ? 18 : 0) + 10;
+-  const pw = Math.max(1, w - pad * 2);
+-  const ph = Math.max(1, h - pad * 2 - head);
++  const plot: Plot = { item, p, s, w: Math.max(1, w - pad * 2), h: Math.max(1, h - pad * 2 - head) };
++  const body =
++    item.kind === "pieChart" ? <Donut {...plot} /> : item.kind === "scatterChart" ? <Scatter {...plot} /> : item.kind === "heatmapChart" ? <Heatmap {...plot} /> : <XYPlot {...plot} />;
+   return (
+     <div style={{ position: "absolute", inset: 0, padding: pad, boxSizing: "border-box", borderRadius: 16, background: s.row }}>
+       <div style={{ ...oneLine, fontSize: 17, fontWeight: 600, lineHeight: "22px", color: s.label }}>{item.label}</div>
+       {sub && <div style={{ ...oneLine, fontSize: 13, lineHeight: "18px", color: s.secondary }}>{item.supporting}</div>}
+-      <div style={{ marginTop: 10 }}>{item.kind === "pieChart" ? <Donut item={item} p={p} s={s} w={pw} h={ph} /> : <XYPlot item={item} p={p} s={s} w={pw} h={ph} />}</div>
++      <div style={{ marginTop: 10 }}>{body}</div>
+     </div>
+   );
+ }
+diff --git a/components/IosControls.tsx b/components/IosControls.tsx
+index 4b5795a..b11ccfe 100644
+--- a/components/IosControls.tsx
++++ b/components/IosControls.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { t, useLang } from "../lib/i18n";
+ import type { Item, Palette } from "../lib/tokens";
+-import { DESTRUCTIVE, Glyph, Sys, center, glass, oneLine, rowStyle } from "./iosStyle";
++import { DESTRUCTIVE, Glyph, Sys, center, glass, oneLine, rowStyle, tint } from "./iosStyle";
+ 
+ /* The SwiftUI controls only the iOS target offers, drawn the way iOS 26 draws them.
+  * Each fills exactly the w×h that sizeOf gives its kind. */
+@@ -193,6 +193,148 @@ function EmptyState({ item, s }: Props) {
+   );
+ }
+ 
++/** a Link: accent-colored words in a grouped row */
++function Link({ item, p, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: p.primary }}>{item.label}</span>
++    </div>
++  );
++}
++
++/** LabeledContent: the label, and the value right-aligned in the secondary color */
++function LabeledContent({ item, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.label }}>{item.label}</span>
++      <span style={{ ...oneLine, maxWidth: "50%", fontSize: 17, color: s.secondary }}>{item.supporting}</span>
++    </div>
++  );
++}
++
++/** a SecureField: the placeholder in a grouped row */
++function SecureField({ item, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.tertiary }}>{item.label}</span>
++    </div>
++  );
++}
++
++/** a section footer: footnote type under the section above */
++function SectionFooter({ item, s }: Props) {
++  return (
++    <div style={{ position: "absolute", left: 16, right: 16, top: 4, fontSize: 13, lineHeight: 1.35, color: s.secondary, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.label}</div>
++  );
++}
++
++/** a TipView: the symbol, the title and the message on a grouped card, the close button at the corner */
++function Tip({ item, p, s }: Props) {
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "flex", gap: 12, padding: "14px 36px 14px 14px", boxSizing: "border-box", borderRadius: 16, background: s.row }}>
++      {item.icon && <Glyph name={item.icon} size={28} color={p.primary} />}
++      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
++        <span style={{ ...oneLine, fontSize: 15, fontWeight: 600, color: s.label }}>{item.label}</span>
++        <span style={{ fontSize: 15, lineHeight: 1.3, color: s.secondary, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.supporting}</span>
++      </div>
++      <span style={{ position: "absolute", top: 10, right: 10 }}>
++        <Glyph name="close" size={16} color={s.tertiary} />
++      </span>
++    </div>
++  );
++}
++
++/** a PhotosPicker in the bordered button style */
++function PhotosPicker({ item, p }: Props) {
++  return (
++    <div style={{ ...center, position: "absolute", inset: 0, gap: 8, borderRadius: 999, background: tint(p.primary, 14) }}>
++      {item.icon && <Glyph name={item.icon} size={20} color={p.primary} />}
++      <span style={{ ...oneLine, fontSize: 17, fontWeight: 500, color: p.primary }}>{item.label}</span>
++    </div>
++  );
++}
++
++/** Sign in with Apple and Apple Pay: the system's black (white when dark) button; the canvas draws no Apple logo */
++function SystemButton({ item, s, dark }: Props) {
++  return (
++    <div style={{ ...center, ...oneLine, position: "absolute", inset: 0, borderRadius: 12, background: s.label, color: dark ? "#000000" : "#FFFFFF", fontSize: 19, fontWeight: 600 }}>{item.label}</div>
++  );
++}
++
++/** a VideoPlayer: 16:9 black, a glass play button and the scrubber */
++function VideoPlayer({ dark }: Props) {
++  return (
++    <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 20, background: "#000000" }}>
++      <div style={{ ...center, position: "absolute", left: "50%", top: "50%", width: 56, height: 56, marginLeft: -28, marginTop: -28, borderRadius: 999, ...glass(true, false) }}>
++        <Glyph name="play_arrow" size={30} color="#FFFFFF" fill />
++      </div>
++      <div style={{ position: "absolute", left: 16, right: 16, bottom: 16, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.35)" }}>
++        <div style={{ width: "30%", height: 4, borderRadius: 2, background: dark ? "#FFFFFF" : "#F2F2F7" }} />
++      </div>
++    </div>
++  );
++}
++
++/** a LazyVGrid of square photos, three across with 2pt gaps */
++function PhotoGrid({ p, s, w, h }: Props) {
++  const cell = (w - 4) / 3;
++  const rows = Math.max(1, Math.floor((h + 2) / (cell + 2)));
++  const hues = [p.primary, "#34C759", "#FF9500", "#5AC8FA", "#FF2D55", "#AF52DE"];
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridAutoRows: cell, gap: 2, overflow: "hidden" }}>
++      {Array.from({ length: rows * 3 }, (_, i) => (
++        <div key={i} style={{ ...center, background: tint(hues[(i * 5) % hues.length], 22) }}>
++          <Glyph name="image" size={22} color={s.tertiary} />
++        </div>
++      ))}
++    </div>
++  );
++}
++
++/** the tab bar's bottom accessory: a glass capsule with artwork, title and the play and next buttons */
++function TabAccessory({ item, p, s, dark }: Props) {
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 10, padding: "0 16px 0 10px", borderRadius: 999, ...glass(dark, true) }}>
++      <div style={{ ...center, flex: "0 0 auto", width: 36, height: 36, borderRadius: 8, background: tint(p.primary, 25) }}>{item.icon && <Glyph name={item.icon} size={20} color={p.primary} />}</div>
++      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
++        <span style={{ ...oneLine, fontSize: 15, fontWeight: 600, color: s.label }}>{item.label}</span>
++        {item.supporting?.trim() && <span style={{ ...oneLine, fontSize: 13, color: s.secondary }}>{item.supporting}</span>}
++      </div>
++      <Glyph name="play_arrow" size={26} color={s.label} fill />
++      <Glyph name="fast_forward" size={24} color={s.label} fill />
++    </div>
++  );
++}
++
++const SUBSCRIBE: Record<string, [string, string]> = {
++  ja: ["登録する", "購入を復元"],
++  en: ["Subscribe", "Restore Purchases"],
++  zh: ["订阅", "恢复购买"],
++  ko: ["구독하기", "구입 내역 복원"],
++};
++
++/** a SubscriptionStoreView: the marketing title, the plans as a picker, the subscribe button and restore */
++function SubscriptionStore({ item, p, s }: Props) {
++  const lang = useLang();
++  const [subscribe, restore] = SUBSCRIBE[lang] ?? SUBSCRIBE.en;
++  const plans = item.tabs ?? [];
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8, padding: 20, boxSizing: "border-box", borderRadius: 22, background: s.row }}>
++      <span style={{ ...oneLine, textAlign: "center", fontSize: 28, fontWeight: 700, color: s.label }}>{item.label}</span>
++      <span style={{ ...oneLine, textAlign: "center", fontSize: 15, color: s.secondary, marginBottom: 8 }}>{item.supporting}</span>
++      {plans.map((plan, i) => (
++        <div key={i} style={{ display: "flex", alignItems: "center", height: 52, padding: "0 16px", boxSizing: "border-box", borderRadius: 14, border: `2px solid ${i === 0 ? p.primary : s.separator}`, background: i === 0 ? tint(p.primary, 8) : undefined }}>
++          <span style={{ ...oneLine, flex: 1, fontSize: 17, fontWeight: 600, color: s.label }}>{plan.label}</span>
++          <Glyph name={i === 0 ? "check_circle" : "radio_button_unchecked"} size={22} color={i === 0 ? p.primary : s.tertiary} fill={i === 0} />
++        </div>
++      ))}
++      <div style={{ flex: 1 }} />
++      <div style={{ ...center, height: 50, borderRadius: 999, background: p.primary, color: p.onPrimary, fontSize: 17, fontWeight: 600 }}>{subscribe}</div>
++      <span style={{ textAlign: "center", fontSize: 13, color: p.primary }}>{restore}</span>
++    </div>
++  );
++}
++
+ /** one iOS-only control in its box */
+ export function IosControl(props: Props) {
+   switch (props.item.kind) {
+@@ -218,6 +360,29 @@ export function IosControl(props: Props) {
+       return <ActionSheet {...props} />;
+     case "emptyState":
+       return <EmptyState {...props} />;
++    case "link":
++      return <Link {...props} />;
++    case "labeledContent":
++      return <LabeledContent {...props} />;
++    case "secureField":
++      return <SecureField {...props} />;
++    case "sectionFooter":
++      return <SectionFooter {...props} />;
++    case "tip":
++      return <Tip {...props} />;
++    case "photosPicker":
++      return <PhotosPicker {...props} />;
++    case "signInWithApple":
++    case "applePayButton":
++      return <SystemButton {...props} />;
++    case "videoPlayer":
++      return <VideoPlayer {...props} />;
++    case "photoGrid":
++      return <PhotoGrid {...props} />;
++    case "tabAccessory":
++      return <TabAccessory {...props} />;
++    case "subscriptionStore":
++      return <SubscriptionStore {...props} />;
+     default:
+       return null;
+   }
+diff --git a/components/IosNode.tsx b/components/IosNode.tsx
+index b0c62e8..badd94c 100644
+--- a/components/IosNode.tsx
++++ b/components/IosNode.tsx
+@@ -4,6 +4,7 @@ import { IOS_CHART_KINDS, IOS_KINDS, isIosKind } from "../lib/iosKinds";
+ import { Item, Kind, NAV_BAR_H, Palette, Radii, STATUS_BAR_H, isMeasured, isScrollableTabs } from "../lib/tokens";
+ import { IosChart } from "./IosCharts";
+ import { IosControl } from "./IosControls";
++import { CustomBody } from "./CustomNode";
+ import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./iosStyle";
+ 
+ /* When the prompt targets iOS, the canvas draws these parts the way iOS 26 draws them.
+@@ -15,7 +16,8 @@ import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./i
+  * may not ship on the web. */
+ 
+ /** kinds the canvas can draw in an iOS 26 skin */
+-export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS];
++/** kinds the canvas draws here: the seven with an iOS skin, the iOS-only kinds and custom components */
++export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS, "custom"];
+ 
+ /** the part has an iOS skin and its size does not depend on how it is drawn */
+ export const takesIosSkin = (item: Item) => IOS_SKIN_KINDS.includes(item.kind) && !isMeasured(item);
+@@ -211,6 +213,8 @@ export function IosBody({ item, p, w, h, dark, radii }: { item: Item; p: Palette
+         return <Slider item={item} p={p} s={s} w={w} h={h} />;
+       case "toolbar":
+         return <Toolbar item={item} p={p} s={s} h={h} dark={dark} />;
++      case "custom":
++        return <CustomBody item={item} p={p} w={w} h={h} dark={dark} />;
+       default:
+         if (!isIosKind(item.kind)) return null;
+         return IOS_CHART_KINDS.includes(item.kind) ? <IosChart item={item} p={p} s={s} w={w} h={h} /> : <IosControl item={item} p={p} s={s} w={w} h={h} dark={dark} />;
+diff --git a/components/M3Node.tsx b/components/M3Node.tsx
+index 1e9713b..092f1b6 100644
+--- a/components/M3Node.tsx
++++ b/components/M3Node.tsx
+@@ -72,7 +72,7 @@ import { t, useLang } from "@/lib/i18n";
+ import { useTheme } from "@/lib/theme";
+ import { usePlatform } from "@/lib/platform";
+ import { glyphOf } from "@/lib/sfsymbols";
+-import { IOS_ONLY_KINDS } from "@/lib/tokens";
++import { SELF_DRAWN_KINDS } from "@/lib/tokens";
+ import { IosBody, takesIosSkin } from "./IosNode";
+ import { railSelectedLabelColor } from "@/lib/color";
+ 
+@@ -1880,7 +1880,7 @@ export function M3Node({
+     : ripples.list;
+ 
+   /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
+-  if (takesIosSkin(drawn) && (platform === "ios" || IOS_ONLY_KINDS.includes(drawn.kind)))
++  if (takesIosSkin(drawn) && (platform === "ios" || SELF_DRAWN_KINDS.includes(drawn.kind)))
+     return (
+       <div
+         data-node={item.id}
+@@ -1988,7 +1988,7 @@ export function M3Static({
+   const r = radii ?? baseRadii(item);
+   const size = sizeOf(item, {});
+   const measured = isMeasured(item);
+-  if (takesIosSkin(item) && (platform === "ios" || IOS_ONLY_KINDS.includes(item.kind)))
++  if (takesIosSkin(item) && (platform === "ios" || SELF_DRAWN_KINDS.includes(item.kind)))
+     return (
+       <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
+         <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+diff --git a/components/PartInspector.tsx b/components/PartInspector.tsx
+index 955e8ae..d853bf2 100644
+--- a/components/PartInspector.tsx
++++ b/components/PartInspector.tsx
+@@ -510,6 +510,23 @@ export function PartInspector({
+         </Section>
+       )}
+ 
++      {/* ---------- custom components: the definition's name and the props this instance passes ---------- */}
++      {kind === "custom" && (
++        <Section id="part-custom" icon="widgets" title={item.custom?.name ?? t("text", lang)} p={p}>
++          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
++            {item.custom?.description && <div style={{ fontSize: 12, lineHeight: 1.4, color: p.onSurfaceVariant }}>{item.custom.description}</div>}
++            <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
++            <Field value={item.supporting ?? ""} onChange={(supporting) => onChange({ supporting })} placeholder={t("supporting", lang)} p={p} />
++            {Object.entries(item.custom?.props ?? {}).map(([key, fallback]) => (
++              <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: p.onSurfaceVariant }}>
++                {key}
++                <Field value={item.props?.[key] ?? fallback} onChange={(v) => onChange({ props: { ...item.props, [key]: v } })} placeholder={fallback} p={p} />
++              </div>
++            ))}
++          </div>
++        </Section>
++      )}
++
+       {/* ---------- iOS-only parts: their words and their entries ---------- */}
+       {IOS_ONLY_KINDS.includes(kind) && (spec.hasLabel || spec.hasIcon) && (
+         <Section id="part-text" icon="short_text" title={t("text", lang)} p={p}>
+diff --git a/lib/custom.ts b/lib/custom.ts
+new file mode 100644
+index 0000000..53232f0
+--- /dev/null
++++ b/lib/custom.ts
+@@ -0,0 +1,453 @@
++/**
++ * Custom components: parts that no built-in kind covers, defined as data.
++ *
++ * A custom part is an item of kind "custom" that carries its whole definition in `custom`:
++ * an UpperCamelCase name, a description, the props it takes (with defaults), an optional
++ * reference implementation and a layout tree the canvas draws. Instances of one component
++ * share its name and definition and differ in `props` (and in label, supporting, icon and
++ * size). The prompt describes every component once, under "Custom components", with a sketch
++ * generated from the layout, and the layout section names the instances, so the code model
++ * builds each component once and reuses it.
++ *
++ * The layout is a small declarative tree, never code. A shared link is untrusted, so nothing
++ * in a definition runs: every string ends up as text, pictures must be https, and the size of
++ * a tree is capped. This module imports types only, so tokens.ts can import it.
++ */
++import type { Lang } from "./i18n";
++import type { Item, KindSpec, Platform } from "./tokens";
++
++export type ColorRef =
++  | "primary"
++  | "onPrimary"
++  | "label"
++  | "secondary"
++  | "tertiary"
++  | "fill"
++  | "row"
++  | "red"
++  | "orange"
++  | "yellow"
++  | "green"
++  | "blue"
++  | "purple"
++  | "white"
++  | "black"
++  | `#${string}`;
++
++/** any node may carry a condition, for example "{{i}} <= {{rating}}"; the node is drawn only when it holds */
++type Cond = { if?: string };
++export type StackNode = Cond & {
++  type: "vstack" | "hstack" | "zstack";
++  spacing?: number;
++  padding?: number;
++  align?: "start" | "center" | "end";
++  fill?: ColorRef;
++  radius?: number;
++  glass?: boolean;
++  grow?: boolean;
++  children: CustomNode[];
++};
++export type CustomNode =
++  | StackNode
++  | (Cond & { type: "text"; text: string; size?: number; weight?: "regular" | "medium" | "semibold" | "bold"; color?: ColorRef; lines?: number })
++  | (Cond & { type: "icon"; name: string; size?: number; color?: ColorRef })
++  | (Cond & { type: "shape"; shape?: "rect" | "circle" | "capsule"; w?: number; h?: number; fill?: ColorRef; radius?: number })
++  | (Cond & { type: "image"; w?: number; h?: number; radius?: number; src?: string })
++  | (Cond & { type: "spacer"; size?: number })
++  | (Cond & { type: "progress"; value: string | number; color?: ColorRef })
++  | (Cond & { type: "repeat"; count: string | number; child: CustomNode });
++
++export type CustomDef = {
++  /** UpperCamelCase, the type name the code model gives the component */
++  name: string;
++  description?: string;
++  /** the props it takes, each with the default the canvas uses */
++  props?: Record<string, string>;
++  /** the default box; an instance's size and size2 win */
++  w?: number;
++  h?: number;
++  /** a reference implementation the prompt passes on (SwiftUI on iOS) */
++  swiftui?: string;
++  layout?: CustomNode;
++};
++
++/* ---------- validation: what a file or a link may carry ---------- */
++
++const NAME = /^[A-Z][A-Za-z0-9]{0,47}$/;
++const PROP_KEY = /^[a-zA-Z][a-zA-Z0-9]{0,31}$/;
++const TEMPLATE = /^\{\{\s*[a-zA-Z][a-zA-Z0-9]*\s*\}\}$/;
++const ICON = /^(sf:)?[a-z0-9_.]{1,80}$/;
++const NAMED_COLORS = new Set(["primary", "onPrimary", "label", "secondary", "tertiary", "fill", "row", "red", "orange", "yellow", "green", "blue", "purple", "white", "black"]);
++const WEIGHTS = new Set(["regular", "medium", "semibold", "bold"]);
++const ALIGNS = new Set(["start", "center", "end"]);
++const SHAPES = new Set(["rect", "circle", "capsule"]);
++export const MAX_DEPTH = 8;
++export const MAX_NODES = 200;
++
++const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
++const num = (v: unknown, min: number, max: number) => v === undefined || (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max);
++const str = (v: unknown, max: number) => v === undefined || (typeof v === "string" && v.length <= max);
++const bool = (v: unknown) => v === undefined || typeof v === "boolean";
++const numOrTemplate = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) || (typeof v === "string" && v.length <= 64);
++export const isColorRef = (v: unknown): v is ColorRef => typeof v === "string" && (NAMED_COLORS.has(v) || /^#[0-9a-fA-F]{6}$/.test(v));
++const color = (v: unknown) => v === undefined || isColorRef(v);
++
++function validNode(n: unknown, depth: number, budget: { left: number }): boolean {
++  if (!isRec(n) || depth > MAX_DEPTH || --budget.left < 0 || !str(n.if, 120)) return false;
++  switch (n.type) {
++    case "vstack":
++    case "hstack":
++    case "zstack":
++      return (
++        num(n.spacing, 0, 64) &&
++        num(n.padding, 0, 64) &&
++        (n.align === undefined || ALIGNS.has(n.align as string)) &&
++        color(n.fill) &&
++        num(n.radius, 0, 999) &&
++        bool(n.glass) &&
++        bool(n.grow) &&
++        Array.isArray(n.children) &&
++        n.children.length <= 40 &&
++        n.children.every((c) => validNode(c, depth + 1, budget))
++      );
++    case "text":
++      return typeof n.text === "string" && n.text.length <= 200 && num(n.size, 8, 64) && (n.weight === undefined || WEIGHTS.has(n.weight as string)) && color(n.color) && num(n.lines, 1, 10);
++    case "icon":
++      return typeof n.name === "string" && (ICON.test(n.name) || TEMPLATE.test(n.name)) && num(n.size, 8, 96) && color(n.color);
++    case "shape":
++      return (n.shape === undefined || SHAPES.has(n.shape as string)) && num(n.w, 0, 2000) && num(n.h, 0, 2000) && color(n.fill) && num(n.radius, 0, 999);
++    case "image":
++      return num(n.w, 0, 2000) && num(n.h, 0, 2000) && num(n.radius, 0, 999) && (n.src === undefined || (typeof n.src === "string" && n.src.length <= 2000 && /^https:\/\//.test(n.src)));
++    case "spacer":
++      return num(n.size, 0, 400);
++    case "progress":
++      return numOrTemplate(n.value) && color(n.color);
++    case "repeat":
++      return numOrTemplate(n.count) && validNode(n.child, depth + 1, budget);
++    default:
++      return false;
++  }
++}
++
++export const isProps = (v: unknown): v is Record<string, string> =>
++  isRec(v) && Object.keys(v).length <= 24 && Object.entries(v).every(([k, x]) => PROP_KEY.test(k) && typeof x === "string" && x.length <= 200);
++
++/** whether a value is a definition the editor will draw and the prompt will pass on */
++export function isCustomDef(v: unknown): v is CustomDef {
++  return (
++    isRec(v) &&
++    typeof v.name === "string" &&
++    NAME.test(v.name) &&
++    str(v.description, 600) &&
++    str(v.swiftui, 6000) &&
++    num(v.w, 24, 2000) &&
++    num(v.h, 16, 2000) &&
++    (v.props === undefined || isProps(v.props)) &&
++    (v.layout === undefined || validNode(v.layout, 0, { left: MAX_NODES }))
++  );
++}
++
++/* ---------- values: props, templates and conditions ---------- */
++
++/** the values an instance's templates see: its words, then the definition's defaults, then its own props */
++export function varsOf(it: Item): Record<string, string> {
++  return { label: it.label, supporting: it.supporting ?? "", icon: it.icon ?? "", ...(it.custom?.props ?? {}), ...(it.props ?? {}) };
++}
++
++/** "{{rating}} stars" with rating 4 is "4 stars"; an unknown name is empty */
++export const fillIn = (s: string, vars: Record<string, string>) => s.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9]*)\s*\}\}/g, (_, k: string) => vars[k] ?? "");
++
++/** a condition such as "{{i}} <= {{rating}}": numbers compare as numbers; anything else only by == and != */
++export function holds(cond: string | undefined, vars: Record<string, string>): boolean {
++  if (!cond) return true;
++  const text = fillIn(cond, vars);
++  const m = text.match(/^\s*(.*?)\s*(<=|>=|==|!=|<|>)\s*(.*?)\s*$/);
++  if (!m) return text.trim() !== "" && text.trim() !== "0" && text.trim() !== "false";
++  const [, a, op, b] = m;
++  const x = Number(a);
++  const y = Number(b);
++  const numeric = a !== "" && b !== "" && !Number.isNaN(x) && !Number.isNaN(y);
++  switch (op) {
++    case "==":
++      return numeric ? x === y : a === b;
++    case "!=":
++      return numeric ? x !== y : a !== b;
++    case "<":
++      return numeric && x < y;
++    case "<=":
++      return numeric && x <= y;
++    case ">":
++      return numeric && x > y;
++    default:
++      return numeric && x >= y;
++  }
++}
++
++/** how many times a repeat draws its child: 0 to 50 */
++export const countOf = (v: string | number, vars: Record<string, string>) => Math.max(0, Math.min(50, Math.floor(Number(typeof v === "number" ? v : fillIn(v, vars))) || 0));
++
++/* ---------- the kind ---------- */
++
++export const CUSTOM_KIND_SPEC: KindSpec = {
++  label: "Custom component",
++  noun: "カスタム部品",
++  category: "content",
++  paletteIcon: "widgets",
++  w: 380,
++  h: 120,
++  radius: 16,
++  hasVariant: false,
++  hasLabel: true,
++  hasSupporting: true,
++  hasIcon: true,
++  size: { min: 24, max: 1280, step: 4, icon: "width" },
++  size2: { min: 16, max: 892, step: 4, icon: "height" },
++  defLabel: "",
++  defIcon: null,
++  defSupporting: "",
++};
++
++export const CUSTOM_KIND_TEXT: Record<Lang, { noun: string }> = {
++  ja: { noun: "カスタム部品" },
++  en: { noun: "custom component" },
++  zh: { noun: "自定义组件" },
++  ko: { noun: "사용자 정의 컴포넌트" },
++};
++
++/** the box of a custom part: its own size, else its definition's, else 380 × 120 */
++export const customSizeOf = (it: Item) => ({ w: it.size ?? it.custom?.w ?? 380, h: it.size2 ?? it.custom?.h ?? 120 });
++
++/* ---------- sketches: the layout written out for the code model ---------- */
++
++/** the Dynamic Type style nearest to a point size, as in the iOS text note */
++function textStyle(size: number, weight?: string) {
++  if (size >= 34) return "largeTitle";
++  if (size >= 28) return "title";
++  if (size >= 22) return "title2";
++  if (size >= 20) return "title3";
++  if (size >= 17) return weight === "semibold" || weight === "bold" ? "headline" : "body";
++  if (size >= 16) return "callout";
++  if (size >= 15) return "subheadline";
++  if (size >= 13) return "footnote";
++  if (size >= 12) return "caption";
++  return "caption2";
++}
++
++function swiftColor(c: ColorRef): string {
++  if (c.startsWith("#")) {
++    const [r, g, b] = [1, 3, 5].map((i) => (parseInt(c.slice(i, i + 2), 16) / 255).toFixed(3));
++    return `Color(red: ${r}, green: ${g}, blue: ${b})`;
++  }
++  const map: Record<string, string> = {
++    primary: ".tint",
++    onPrimary: ".white",
++    label: ".primary",
++    secondary: ".secondary",
++    tertiary: ".tertiary",
++    fill: "Color(.secondarySystemFill)",
++    row: "Color(.secondarySystemGroupedBackground)",
++  };
++  return map[c] ?? `.${c}`;
++}
++
++/** a template inside Swift code: {{rating}} becomes the identifier rating */
++const swiftExpr = (s: string) => s.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9]*)\s*\}\}/g, "$1");
++/** a template inside a Swift string literal: {{name}} becomes \(name) */
++const swiftString = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9]*)\s*\}\}/g, "\\($1)")}"`;
++
++function swiftLines(n: CustomNode, pad: string): string[] {
++  const out: string[] = [];
++  const inner = n.if ? `${pad}  ` : pad;
++  const body: string[] = [];
++  switch (n.type) {
++    case "vstack":
++    case "hstack":
++    case "zstack": {
++      const V = { vstack: "VStack", hstack: "HStack", zstack: "ZStack" }[n.type];
++      const al = n.align && n.align !== "center" ? { vstack: { start: ".leading", end: ".trailing" }, hstack: { start: ".top", end: ".bottom" }, zstack: { start: ".topLeading", end: ".bottomTrailing" } }[n.type][n.align] : null;
++      const args = [al && `alignment: ${al}`, n.type !== "zstack" && n.spacing !== undefined && `spacing: ${n.spacing}`].filter(Boolean).join(", ");
++      body.push(`${inner}${V}${args ? `(${args})` : ""} {`);
++      for (const c of n.children) body.push(...swiftLines(c, `${inner}  `));
++      body.push(`${inner}}`);
++      if (n.grow) body.push(`${inner}.frame(maxWidth: .infinity${n.type === "vstack" && n.align === "start" ? ", alignment: .leading" : n.type === "vstack" && n.align === "end" ? ", alignment: .trailing" : ""})`);
++      if (n.padding !== undefined) body.push(`${inner}.padding(${n.padding})`);
++      const shape = n.radius ? `.rect(cornerRadius: ${n.radius})` : null;
++      if (n.glass) body.push(`${inner}.glassEffect(.regular${shape ? `, in: ${shape}` : ""})`);
++      else if (n.fill) body.push(`${inner}.background(${swiftColor(n.fill)}${shape ? `, in: ${shape}` : ""})`);
++      break;
++    }
++    case "text":
++      body.push(`${inner}Text(${TEMPLATE.test(n.text) ? swiftExpr(n.text) : swiftString(n.text)})`);
++      body.push(`${inner}  .font(.${textStyle(n.size ?? 17, n.weight)})`);
++      if (n.weight && n.weight !== "regular" && textStyle(n.size ?? 17, n.weight) !== "headline") body.push(`${inner}  .fontWeight(.${n.weight})`);
++      if (n.color) body.push(`${inner}  .foregroundStyle(${swiftColor(n.color)})`);
++      if (n.lines) body.push(`${inner}  .lineLimit(${n.lines})`);
++      break;
++    case "icon": {
++      const name = TEMPLATE.test(n.name) ? swiftExpr(n.name) : n.name.startsWith("sf:") ? `"${n.name.slice(3)}"` : `"${n.name}" /* a Material Symbols name: use the closest SF Symbol */`;
++      body.push(`${inner}Image(systemName: ${name})`);
++      if (n.size) body.push(`${inner}  .font(.system(size: ${n.size}))`);
++      if (n.color) body.push(`${inner}  .foregroundStyle(${swiftColor(n.color)})`);
++      break;
++    }
++    case "shape": {
++      const S = n.shape === "circle" ? "Circle()" : n.shape === "capsule" ? "Capsule()" : `RoundedRectangle(cornerRadius: ${n.radius ?? 0})`;
++      body.push(`${inner}${S}`);
++      body.push(`${inner}  .fill(${n.fill ? swiftColor(n.fill) : ".tint"})`);
++      if (n.w !== undefined || n.h !== undefined) body.push(`${inner}  .frame(${[n.w !== undefined && `width: ${n.w}`, n.h !== undefined && `height: ${n.h}`].filter(Boolean).join(", ")})`);
++      break;
++    }
++    case "image":
++      body.push(n.src ? `${inner}AsyncImage(url: URL(string: "${n.src}")) { $0.resizable().scaledToFill() } placeholder: { Color(.secondarySystemFill) }` : `${inner}Image(systemName: "photo") /* the app's own picture */`);
++      if (n.w !== undefined || n.h !== undefined) body.push(`${inner}  .frame(${[n.w !== undefined && `width: ${n.w}`, n.h !== undefined && `height: ${n.h}`].filter(Boolean).join(", ")})`);
++      if (n.radius) body.push(`${inner}  .clipShape(.rect(cornerRadius: ${n.radius}))`);
++      break;
++    case "spacer":
++      body.push(n.size ? `${inner}Spacer().frame(width: ${n.size}, height: ${n.size})` : `${inner}Spacer()`);
++      break;
++    case "progress":
++      body.push(`${inner}ProgressView(value: ${typeof n.value === "number" ? n.value : `Double(${swiftExpr(n.value)}) ?? 0`}, total: 100)`);
++      if (n.color) body.push(`${inner}  .tint(${swiftColor(n.color)})`);
++      break;
++    case "repeat":
++      body.push(`${inner}ForEach(1...${typeof n.count === "number" ? n.count : `max(1, Int(${swiftExpr(n.count)}) ?? 1)`}, id: \\.self) { i in`);
++      body.push(...swiftLines(n.child, `${inner}  `));
++      body.push(`${inner}}`);
++      break;
++  }
++  if (n.if) return [...out, `${pad}if ${swiftExpr(n.if)} {`, ...body, `${pad}}`];
++  return body;
++}
++
++function outlineLines(n: CustomNode, pad: string): string[] {
++  const cond = n.if ? ` when ${n.if.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9]*)\s*\}\}/g, "$1")}` : "";
++  const opts = (xs: (string | false | undefined)[]) => {
++    const o = xs.filter(Boolean).join(", ");
++    return o ? ` (${o})` : "";
++  };
++  switch (n.type) {
++    case "vstack":
++    case "hstack":
++    case "zstack": {
++      const head = `${pad}${{ vstack: "column", hstack: "row", zstack: "layers" }[n.type]}${opts([n.spacing !== undefined && `spacing ${n.spacing}`, n.padding !== undefined && `padding ${n.padding}`, n.align && `align ${n.align}`, n.fill && `fill ${n.fill}`, n.radius !== undefined && `corner ${n.radius}`, n.glass && "translucent", n.grow && "fills the width"])}${cond}`;
++      return [head, ...n.children.flatMap((c) => outlineLines(c, `${pad}  `))];
++    }
++    case "text":
++      return [`${pad}text "${n.text}"${opts([n.size !== undefined && `size ${n.size}`, n.weight, n.color, n.lines !== undefined && `${n.lines} lines`])}${cond}`];
++    case "icon":
++      return [`${pad}icon ${n.name}${opts([n.size !== undefined && `size ${n.size}`, n.color])}${cond}`];
++    case "shape":
++      return [`${pad}${n.shape ?? "rect"}${opts([n.w !== undefined && `${n.w} wide`, n.h !== undefined && `${n.h} tall`, n.fill, n.radius !== undefined && `corner ${n.radius}`])}${cond}`];
++    case "image":
++      return [`${pad}image${opts([n.w !== undefined && `${n.w} wide`, n.h !== undefined && `${n.h} tall`, n.radius !== undefined && `corner ${n.radius}`, n.src])}${cond}`];
++    case "spacer":
++      return [`${pad}space${n.size ? ` ${n.size}` : " (flexible)"}${cond}`];
++    case "progress":
++      return [`${pad}progress bar at ${n.value}%${opts([n.color])}${cond}`];
++    case "repeat":
++      return [`${pad}repeat ${n.count} times as i${cond}`, ...outlineLines(n.child, `${pad}  `)];
++  }
++}
++
++/** the layout written out: a SwiftUI skeleton for iOS, an outline elsewhere */
++export const sketchOf = (layout: CustomNode, platform: Platform) => (platform === "ios" ? swiftLines(layout, "") : outlineLines(layout, ""));
++
++/* ---------- prompt text ---------- */
++
++type Words = {
++  heading: string;
++  intro: (pl: Platform) => string;
++  props: (list: string) => string;
++  sketch: string;
++  reference: string;
++  instance: (name: string, values: string) => string;
++  undefined: string;
++  note: (pl: Platform) => string;
++};
++
++const view = (pl: Platform, ios: string, web: string, android: string) => (pl === "ios" ? ios : pl === "web" ? web : android);
++
++const WORDS: Record<Lang, Words> = {
++  en: {
++    heading: "## Custom components",
++    intro: (pl) => `These parts are defined by the designer rather than built in. Build each one once as its own reusable ${view(pl, "SwiftUI view (`struct Name: View`)", "component", "composable function")} that takes the listed props, and use it wherever the layout names it, with the values given there.`,
++    props: (list) => `Props: ${list}.`,
++    sketch: "Canvas sketch:",
++    reference: "Reference implementation from the designer (keep its intent and follow the rules above):",
++    instance: (name, values) => `the custom component ${name}${values ? ` (${values})` : ""}`,
++    undefined: "a custom component that has no definition yet",
++    note: (pl) => `Custom component → its own reusable ${view(pl, "SwiftUI view", "component", "composable")}, built once from its entry under "Custom components" and placed wherever the layout names it, with the props listed there. Inside it, follow the same rules as the built-in parts.`,
++  },
++  zh: {
++    heading: "## 自定义组件",
++    intro: (pl) => `以下组件由设计者定义，不是系统内置组件。每个组件只实现一次，做成可复用的${view(pl, " SwiftUI 视图（`struct 名称: View`）", "组件", "可组合函数（composable）")}，接收所列属性；屏幕结构中出现该名称的地方都复用它，并使用那里给出的属性值。`,
++    props: (list) => `属性：${list}。`,
++    sketch: "画布草图：",
++    reference: "设计者提供的参考实现（保留其意图，并遵守上面的规则）：",
++    instance: (name, values) => `自定义组件 ${name}${values ? `（${values}）` : ""}`,
++    undefined: "尚未定义的自定义组件",
++    note: (pl) => `自定义组件 → 各自做成可复用的${view(pl, " SwiftUI 视图", "组件", "可组合函数")}，按「自定义组件」中的条目只实现一次，在屏幕结构中出现该名称的地方复用，并传入那里列出的属性值。组件内部同样遵守内置组件的规则。`,
++  },
++  ja: {
++    heading: "## カスタム部品",
++    intro: (pl) => `以下は組み込みではなく、デザイナーが定義した部品です。それぞれ一度だけ、一覧の props を受け取る再利用可能な${view(pl, " SwiftUI ビュー（`struct 名前: View`）", "コンポーネント", "コンポーザブル関数")}として実装し、画面構成でその名前が出てくる箇所すべてで、そこで指定された値を渡して使ってください。`,
++    props: (list) => `props：${list}。`,
++    sketch: "キャンバス上のスケッチ：",
++    reference: "デザイナーの参考実装（意図を保ち、上のルールに従う）：",
++    instance: (name, values) => `カスタム部品 ${name}${values ? `（${values}）` : ""}`,
++    undefined: "まだ定義のないカスタム部品",
++    note: (pl) => `カスタム部品 → それぞれ再利用可能な${view(pl, " SwiftUI ビュー", "コンポーネント", "コンポーザブル")}として「カスタム部品」の項目から一度だけ実装し、画面構成で名前が出てくる箇所で、そこに書かれた props を渡して使う。内部も組み込み部品と同じルールに従う。`,
++  },
++  ko: {
++    heading: "## 사용자 정의 컴포넌트",
++    intro: (pl) => `아래 부품은 기본 제공이 아니라 디자이너가 정의한 것이다. 각각 한 번만, 나열된 props를 받는 재사용 가능한 ${view(pl, "SwiftUI 뷰(`struct 이름: View`)", "컴포넌트", "컴포저블 함수")}로 구현하고, 화면 구성에서 그 이름이 나오는 곳마다 거기 적힌 값으로 재사용한다.`,
++    props: (list) => `props: ${list}.`,
++    sketch: "캔버스 스케치:",
++    reference: "디자이너의 참고 구현(의도를 유지하고 위 규칙을 따른다):",
++    instance: (name, values) => `사용자 정의 컴포넌트 ${name}${values ? ` (${values})` : ""}`,
++    undefined: "아직 정의가 없는 사용자 정의 컴포넌트",
++    note: (pl) => `사용자 정의 컴포넌트 → 각각 재사용 가능한 ${view(pl, "SwiftUI 뷰", "컴포넌트", "컴포저블")}로, "사용자 정의 컴포넌트" 항목에 따라 한 번만 구현하고 화면 구성에서 이름이 나오는 곳마다 거기 적힌 props로 사용한다. 내부도 기본 부품과 같은 규칙을 따른다.`,
++  },
++};
++
++/** the style note for the custom kind on Android and the web (iOS has its own in prompt-ios.ts) */
++export const customStyleNote = (lang: Lang, platform: Platform) => WORDS[lang].note(platform);
++
++/** how the layout names one instance: the component and the prop values it passes */
++export function customItemText(it: Item, lang: Lang): string {
++  const def = it.custom;
++  if (!def) return WORDS[lang].undefined;
++  const vars = varsOf(it);
++  const values = Object.keys(def.props ?? {})
++    .map((k) => `${k} "${vars[k] ?? ""}"`)
++    .join(", ");
++  return WORDS[lang].instance(def.name, values);
++}
++
++/** the "Custom components" section: each definition once, in the order the layout first meets it */
++export function customSection(items: Item[], lang: Lang, platform: Platform): string[] {
++  const defs = new Map<string, CustomDef>();
++  for (const it of items) if (it.kind === "custom" && it.custom && !defs.has(it.custom.name)) defs.set(it.custom.name, it.custom);
++  if (defs.size === 0) return [];
++  const w = WORDS[lang];
++  const lines = ["", w.heading, w.intro(platform)];
++  for (const def of defs.values()) {
++    const props = Object.entries(def.props ?? {})
++      .map(([k, v]) => `${k} ("${v}")`)
++      .join(", ");
++    lines.push(`- ${def.name}: ${def.description?.trim() || def.name}${props ? ` ${w.props(props)}` : ""}`);
++    if (def.layout) {
++      lines.push(`  ${w.sketch}`);
++      lines.push(platform === "ios" ? "  ```swift" : "  ```text");
++      for (const l of sketchOf(def.layout, platform)) lines.push(`  ${l}`);
++      lines.push("  ```");
++    }
++    if (def.swiftui?.trim() && platform === "ios") {
++      lines.push(`  ${w.reference}`);
++      lines.push("  ```swift");
++      for (const l of def.swiftui.trim().split("\n")) lines.push(`  ${l}`);
++      lines.push("  ```");
++    }
++  }
++  return lines;
++}
+diff --git a/lib/i18n.ts b/lib/i18n.ts
+index 81bb0e7..79eed87 100644
+--- a/lib/i18n.ts
++++ b/lib/i18n.ts
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { CUSTOM_KIND_TEXT } from "./custom";
+ import { IOS_KIND_TEXT } from "./iosKinds";
+ 
+ import { createContext, useContext } from "react";
+@@ -620,6 +621,7 @@ export const KIND_TEXT: Record<
+     datePicker: { noun: "日付ピッカー", label: "3月17日（月）" },
+     timePicker: { noun: "時刻ピッカー" },
+     ...IOS_KIND_TEXT.ja,
++    custom: CUSTOM_KIND_TEXT.ja,
+   },
+   en: {
+     box: { noun: "box" },
+@@ -659,6 +661,7 @@ export const KIND_TEXT: Record<
+     datePicker: { noun: "date picker", label: "Mon, Mar 17" },
+     timePicker: { noun: "time picker" },
+     ...IOS_KIND_TEXT.en,
++    custom: CUSTOM_KIND_TEXT.en,
+   },
+   zh: {
+     box: { noun: "容器框" },
+@@ -698,6 +701,7 @@ export const KIND_TEXT: Record<
+     datePicker: { noun: "日期选择器", label: "3月17日 周一" },
+     timePicker: { noun: "时间选择器" },
+     ...IOS_KIND_TEXT.zh,
++    custom: CUSTOM_KIND_TEXT.zh,
+   },
+   ko: {
+     box: { noun: "상자" },
+@@ -737,6 +741,7 @@ export const KIND_TEXT: Record<
+     datePicker: { noun: "날짜 선택기", label: "3월 17일 (월)" },
+     timePicker: { noun: "시간 선택기" },
+     ...IOS_KIND_TEXT.ko,
++    custom: CUSTOM_KIND_TEXT.ko,
+   },
+ };
+ 
+diff --git a/lib/iosKinds.ts b/lib/iosKinds.ts
+index 91d3cb3..b2c5024 100644
+--- a/lib/iosKinds.ts
++++ b/lib/iosKinds.ts
+@@ -21,14 +21,29 @@ export const IOS_KINDS = [
+   "menu",
+   "actionSheet",
+   "emptyState",
++  "link",
++  "labeledContent",
++  "secureField",
++  "sectionFooter",
++  "tip",
++  "photosPicker",
++  "signInWithApple",
++  "applePayButton",
++  "videoPlayer",
++  "photoGrid",
++  "tabAccessory",
++  "subscriptionStore",
+   "barChart",
+   "lineChart",
+   "areaChart",
+   "pieChart",
++  "scatterChart",
++  "stackedBarChart",
++  "heatmapChart",
+ ] as const;
+ export type IosKind = (typeof IOS_KINDS)[number];
+ export const isIosKind = (k: string): k is IosKind => (IOS_KINDS as readonly string[]).includes(k);
+-export const IOS_CHART_KINDS: readonly IosKind[] = ["barChart", "lineChart", "areaChart", "pieChart"];
++export const IOS_CHART_KINDS: readonly IosKind[] = ["barChart", "lineChart", "areaChart", "pieChart", "scatterChart", "stackedBarChart", "heatmapChart"];
+ 
+ /** content width inside the phone margins (CONTENT_W in tokens.ts) */
+ const W = 380;
+@@ -58,6 +73,21 @@ export const IOS_KIND_SPEC: Record<IosKind, KindSpec> = {
+   menu: spec({ label: "Menu", noun: "メニュー", category: "ios", paletteIcon: "menu_open", w: 250, h: 144, radius: 22, hasTabs: true }),
+   actionSheet: spec({ label: "Action sheet", noun: "アクションシート", category: "ios", paletteIcon: "list_alt", h: 248, radius: 22, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
+   emptyState: spec({ label: "Empty state", noun: "空の状態", category: "ios", paletteIcon: "inbox", h: 220, radius: 0, hasSupporting: true, hasIcon: true, defSupporting: "", defIcon: "sf:tray", size: WIDTH, defSize: W }),
++  link: spec({ label: "Link", noun: "リンク", category: "ios", paletteIcon: "link", h: 44, size: WIDTH, defSize: W }),
++  labeledContent: spec({ label: "Labeled value", noun: "項目と値", category: "ios", paletteIcon: "short_text", h: 44, hasSupporting: true, defSupporting: "", size: WIDTH, defSize: W }),
++  secureField: spec({ label: "Secure field", noun: "パスワード入力欄", category: "ios", paletteIcon: "password", h: 44, size: WIDTH, defSize: W }),
++  sectionFooter: spec({ label: "Section footer", noun: "セクション補足", category: "ios", paletteIcon: "subject", h: 40, radius: 0, size: WIDTH, defSize: W }),
++  tip: spec({ label: "Tip", noun: "ヒント", category: "ios", paletteIcon: "tips_and_updates", h: 96, radius: 16, hasSupporting: true, hasIcon: true, defSupporting: "", defIcon: "sf:lightbulb", size: WIDTH, defSize: W }),
++  photosPicker: spec({ label: "Photos picker", noun: "写真ピッカー", category: "ios", paletteIcon: "add_photo_alternate", w: 220, h: 44, radius: 22, hasIcon: true, defIcon: "sf:photo.on.rectangle" }),
++  signInWithApple: spec({ label: "Sign in with Apple", noun: "Appleでサインイン", category: "ios", paletteIcon: "login", h: 50, radius: 12, size: WIDTH, defSize: W }),
++  applePayButton: spec({ label: "Apple Pay button", noun: "Apple Pay ボタン", category: "ios", paletteIcon: "contactless", h: 50, radius: 12, size: WIDTH, defSize: W }),
++  videoPlayer: spec({ label: "Video player", noun: "動画プレーヤー", category: "ios", paletteIcon: "smart_display", h: 214, radius: 20, hasLabel: false, size: WIDTH, defSize: W }),
++  photoGrid: spec({ label: "Photo grid", noun: "写真グリッド", category: "ios", paletteIcon: "grid_on", h: 254, radius: 0, hasLabel: false, size: WIDTH, defSize: W, size2: { min: 84, max: 892, step: 4, icon: "height" } }),
++  tabAccessory: spec({ label: "Tab bar accessory", noun: "タブバーのアクセサリ", category: "ios", paletteIcon: "queue_music", h: 56, radius: 28, hasSupporting: true, hasIcon: true, defSupporting: "", defIcon: "sf:music.note", size: WIDTH, defSize: W }),
++  subscriptionStore: spec({ label: "Subscription store", noun: "サブスクリプション画面", category: "ios", paletteIcon: "workspace_premium", h: 320, radius: 22, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  scatterChart: spec({ label: "Scatter chart", noun: "散布図", category: "charts", paletteIcon: "scatter_plot", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  stackedBarChart: spec({ label: "Stacked bar chart", noun: "積み上げ棒グラフ", category: "charts", paletteIcon: "stacked_bar_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  heatmapChart: spec({ label: "Heatmap", noun: "ヒートマップ", category: "charts", paletteIcon: "grid_view", h: 220, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
+   barChart: spec({ label: "Bar chart", noun: "棒グラフ", category: "charts", paletteIcon: "bar_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
+   lineChart: spec({ label: "Line chart", noun: "折れ線グラフ", category: "charts", paletteIcon: "show_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
+   areaChart: spec({ label: "Area chart", noun: "面グラフ", category: "charts", paletteIcon: "area_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
+@@ -74,6 +104,10 @@ export const IOS_ENTRY_BOUNDS: Partial<Record<IosKind, { min: number; max: numbe
+   lineChart: { min: 2, max: 12 },
+   areaChart: { min: 2, max: 12 },
+   pieChart: { min: 2, max: 8 },
++  subscriptionStore: { min: 1, max: 4 },
++  scatterChart: { min: 1, max: 4 },
++  stackedBarChart: { min: 2, max: 12 },
++  heatmapChart: { min: 3, max: 12 },
+ };
+ 
+ type KindText = { noun: string; label?: string; supporting?: string };
+@@ -91,6 +125,21 @@ export const IOS_KIND_TEXT: Record<Lang, Record<IosKind, KindText>> = {
+     menu: { noun: "メニュー", label: "並べ替え" },
+     actionSheet: { noun: "アクションシート", label: "このメモを削除しますか？", supporting: "この操作は取り消せません。" },
+     emptyState: { noun: "空の状態", label: "メモがありません", supporting: "右上の＋から新しいメモを作成できます。" },
++    link: { noun: "リンク", label: "プライバシーポリシー" },
++    labeledContent: { noun: "項目と値", label: "バージョン", supporting: "2.4.1" },
++    secureField: { noun: "パスワード入力欄", label: "パスワード" },
++    sectionFooter: { noun: "セクション補足", label: "オンにすると、ほかのデバイスとメモが同期されます。" },
++    tip: { noun: "ヒント", label: "お気に入りに追加", supporting: "ハートをタップすると、あとで見つけやすくなります。" },
++    photosPicker: { noun: "写真ピッカー", label: "写真を選択" },
++    signInWithApple: { noun: "Appleでサインインボタン", label: "Appleでサインイン" },
++    applePayButton: { noun: "Apple Pay ボタン", label: "Apple Payで購入" },
++    videoPlayer: { noun: "動画プレーヤー" },
++    photoGrid: { noun: "写真グリッド" },
++    tabAccessory: { noun: "タブバーのアクセサリ", label: "再生中の曲", supporting: "アーティスト" },
++    subscriptionStore: { noun: "サブスクリプション画面", label: "プレミアム", supporting: "すべての機能を使えます" },
++    scatterChart: { noun: "散布図", label: "歩数と睡眠", supporting: "過去 30 日" },
++    stackedBarChart: { noun: "積み上げ棒グラフ", label: "スクリーンタイム", supporting: "過去 7 日" },
++    heatmapChart: { noun: "ヒートマップ", label: "アクティビティ", supporting: "過去 5 週" },
+     barChart: { noun: "棒グラフ", label: "歩数", supporting: "過去 7 日" },
+     lineChart: { noun: "折れ線グラフ", label: "体重", supporting: "過去 7 日" },
+     areaChart: { noun: "面グラフ", label: "睡眠", supporting: "過去 7 日" },
+@@ -108,6 +157,21 @@ export const IOS_KIND_TEXT: Record<Lang, Record<IosKind, KindText>> = {
+     menu: { noun: "menu", label: "Sort" },
+     actionSheet: { noun: "action sheet", label: "Delete this note?", supporting: "This can't be undone." },
+     emptyState: { noun: "empty state", label: "No Notes", supporting: "Tap + to create your first note." },
++    link: { noun: "link", label: "Privacy Policy" },
++    labeledContent: { noun: "labeled value", label: "Version", supporting: "2.4.1" },
++    secureField: { noun: "secure field", label: "Password" },
++    sectionFooter: { noun: "section footer", label: "When this is on, your notes sync across your devices." },
++    tip: { noun: "tip", label: "Add to Favorites", supporting: "Tap the heart to find it again later." },
++    photosPicker: { noun: "photos picker", label: "Select Photos" },
++    signInWithApple: { noun: "Sign in with Apple button", label: "Sign in with Apple" },
++    applePayButton: { noun: "Apple Pay button", label: "Buy with Apple Pay" },
++    videoPlayer: { noun: "video player" },
++    photoGrid: { noun: "photo grid" },
++    tabAccessory: { noun: "tab bar accessory", label: "Now Playing", supporting: "Artist" },
++    subscriptionStore: { noun: "subscription store", label: "Premium", supporting: "Unlock every feature" },
++    scatterChart: { noun: "scatter chart", label: "Steps vs. Sleep", supporting: "Last 30 days" },
++    stackedBarChart: { noun: "stacked bar chart", label: "Screen Time", supporting: "Last 7 days" },
++    heatmapChart: { noun: "heatmap", label: "Activity", supporting: "Last 5 weeks" },
+     barChart: { noun: "bar chart", label: "Steps", supporting: "Last 7 days" },
+     lineChart: { noun: "line chart", label: "Weight", supporting: "Last 7 days" },
+     areaChart: { noun: "area chart", label: "Sleep", supporting: "Last 7 days" },
+@@ -125,6 +189,21 @@ export const IOS_KIND_TEXT: Record<Lang, Record<IosKind, KindText>> = {
+     menu: { noun: "下拉菜单", label: "排序" },
+     actionSheet: { noun: "操作表", label: "删除这条备注？", supporting: "此操作无法撤销。" },
+     emptyState: { noun: "空状态", label: "还没有备注", supporting: "点按右上角的 + 新建备注。" },
++    link: { noun: "链接", label: "隐私政策" },
++    labeledContent: { noun: "键值行", label: "版本", supporting: "2.4.1" },
++    secureField: { noun: "密码框", label: "密码" },
++    sectionFooter: { noun: "分组说明", label: "打开后，备注会在你的设备间同步。" },
++    tip: { noun: "提示卡片", label: "添加到收藏", supporting: "点按爱心，之后更容易找到。" },
++    photosPicker: { noun: "照片选择器", label: "选择照片" },
++    signInWithApple: { noun: "通过 Apple 登录按钮", label: "通过 Apple 登录" },
++    applePayButton: { noun: "Apple Pay 按钮", label: "使用 Apple Pay 购买" },
++    videoPlayer: { noun: "视频播放器" },
++    photoGrid: { noun: "照片网格" },
++    tabAccessory: { noun: "标签栏附件", label: "正在播放", supporting: "艺人" },
++    subscriptionStore: { noun: "订阅页", label: "高级会员", supporting: "解锁全部功能" },
++    scatterChart: { noun: "散点图", label: "步数与睡眠", supporting: "最近 30 天" },
++    stackedBarChart: { noun: "堆叠柱状图", label: "屏幕使用时间", supporting: "最近 7 天" },
++    heatmapChart: { noun: "热力图", label: "活动", supporting: "最近 5 周" },
+     barChart: { noun: "柱状图", label: "步数", supporting: "最近 7 天" },
+     lineChart: { noun: "折线图", label: "体重", supporting: "最近 7 天" },
+     areaChart: { noun: "面积图", label: "睡眠", supporting: "最近 7 天" },
+@@ -142,6 +221,21 @@ export const IOS_KIND_TEXT: Record<Lang, Record<IosKind, KindText>> = {
+     menu: { noun: "메뉴", label: "정렬" },
+     actionSheet: { noun: "액션 시트", label: "이 메모를 삭제할까요?", supporting: "이 작업은 되돌릴 수 없습니다." },
+     emptyState: { noun: "빈 상태", label: "메모 없음", supporting: "오른쪽 위 +를 눌러 새 메모를 만드세요." },
++    link: { noun: "링크", label: "개인정보 처리방침" },
++    labeledContent: { noun: "레이블과 값", label: "버전", supporting: "2.4.1" },
++    secureField: { noun: "비밀번호 입력란", label: "비밀번호" },
++    sectionFooter: { noun: "섹션 설명", label: "켜면 메모가 기기 간에 동기화됩니다." },
++    tip: { noun: "팁", label: "즐겨찾기에 추가", supporting: "하트를 탭하면 나중에 쉽게 찾을 수 있습니다." },
++    photosPicker: { noun: "사진 선택기", label: "사진 선택" },
++    signInWithApple: { noun: "Apple로 로그인 버튼", label: "Apple로 로그인" },
++    applePayButton: { noun: "Apple Pay 버튼", label: "Apple Pay로 구입" },
++    videoPlayer: { noun: "비디오 플레이어" },
++    photoGrid: { noun: "사진 그리드" },
++    tabAccessory: { noun: "탭 바 액세서리", label: "재생 중", supporting: "아티스트" },
++    subscriptionStore: { noun: "구독 화면", label: "프리미엄", supporting: "모든 기능 사용" },
++    scatterChart: { noun: "산점도", label: "걸음 수와 수면", supporting: "최근 30일" },
++    stackedBarChart: { noun: "누적 막대 차트", label: "스크린 타임", supporting: "최근 7일" },
++    heatmapChart: { noun: "히트맵", label: "활동", supporting: "최근 5주" },
+     barChart: { noun: "막대 차트", label: "걸음 수", supporting: "최근 7일" },
+     lineChart: { noun: "꺾은선 차트", label: "체중", supporting: "최근 7일" },
+     areaChart: { noun: "영역 차트", label: "수면", supporting: "최근 7일" },
+@@ -168,6 +262,18 @@ const MENU_ITEMS: Record<Lang, string[]> = {
+   ko: ["날짜", "이름", "크기"],
+ };
+ const MENU_ICONS = ["sf:calendar", "sf:textformat", "sf:arrow.up.arrow.down"];
++const PLANS: Record<Lang, string[]> = {
++  ja: ["月額プラン", "年額プラン"],
++  en: ["Monthly", "Yearly"],
++  zh: ["按月订阅", "按年订阅"],
++  ko: ["월간 플랜", "연간 플랜"],
++};
++const SERIES: Record<Lang, string[]> = {
++  ja: ["今年", "昨年"],
++  en: ["This year", "Last year"],
++  zh: ["今年", "去年"],
++  ko: ["올해", "작년"],
++};
+ const ACTIONS: Record<Lang, string[]> = {
+   ja: ["削除", "アーカイブ"],
+   en: ["Delete", "Archive"],
+@@ -194,6 +300,13 @@ export function iosDefaultTabs(kind: string, lang: Lang): NavTab[] | null {
+       return plain(WEEK[lang]);
+     case "pieChart":
+       return plain(SLICES[lang]);
++    case "subscriptionStore":
++      return plain(PLANS[lang]);
++    case "scatterChart":
++      return plain(SERIES[lang]);
++    case "stackedBarChart":
++    case "heatmapChart":
++      return plain(WEEK[lang]);
+     default:
+       return null;
+   }
+@@ -221,8 +334,16 @@ export function iosSizeOf(it: Item, n: number, h: number): { w: number; h: numbe
+     case "actionSheet":
+       /* the title and message, one row per action, the gap and Cancel */
+       return { w: n, h: 136 + entries * 56 };
++    case "subscriptionStore":
++      /* the title and subtitle, one row per plan, the button and the restore link */
++      return { w: n, h: 200 + entries * 60 };
++    case "videoPlayer":
++      return { w: n, h: Math.round((n * 9) / 16) };
++    case "photoGrid":
++      return { w: n, h: it.size2 ?? h };
+     case "gauge":
+     case "pageControl":
++    case "photosPicker":
+       return { w: s.w, h };
+     default:
+       return { w: n, h };
+diff --git a/lib/project.ts b/lib/project.ts
+index eea8471..7e265d0 100644
+--- a/lib/project.ts
++++ b/lib/project.ts
+@@ -1,3 +1,4 @@
++import { isCustomDef, isProps } from "./custom";
+ import { CAROUSEL_LAYOUTS, DATE_LAYOUTS, Doc, KIND_ORDER, Kind, TIME_LAYOUTS, VARIANTS, isCardAlign, isCardImagePos, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
+ 
+ /* A project file is the Doc as JSON, nothing more. Reading one back only checks
+@@ -39,6 +40,8 @@ const validItem = (item: unknown) =>
+   (item.note === undefined || typeof item.note === "string") &&
+   (item.layout === undefined || (typeof item.layout === "string" && LAYOUTS.has(item.layout))) &&
+   optionalNumber(item.count) &&
++  (item.custom === undefined || isCustomDef(item.custom)) &&
++  (item.props === undefined || isProps(item.props)) &&
+   validTabs(item.tabs);
+ 
+ const validGroup = (group: unknown) =>
+diff --git a/lib/prompt-ios.ts b/lib/prompt-ios.ts
+index 8e46270..a3933c9 100644
+--- a/lib/prompt-ios.ts
++++ b/lib/prompt-ios.ts
+@@ -12,6 +12,7 @@
+ import type { Lang } from "./i18n";
+ import type { Item, Kind, Platform, Theme } from "./tokens";
+ import { isIosKind } from "./iosKinds";
++import { customItemText } from "./custom";
+ 
+ /** mirrors the private Viewport type in prompt.ts */
+ export type ViewportIos = "phone" | "desktop" | "mixed" | "free";
+@@ -240,6 +241,22 @@ const STYLE_NOTES_IOS: {
+     lineChart: "Line chart → Swift Charts: a `LineMark(x:, y:)` with `.interpolationMethod(.catmullRom)` and a `PointMark` per value, `.foregroundStyle(.tint)`; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
+     areaChart: "Area chart → Swift Charts: an `AreaMark(x:, y:)` filled with `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` and a `LineMark` on the same values; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
+     pieChart: "Donut chart → Swift Charts: `SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)` with `.cornerRadius(4)` and `.foregroundStyle(by: .value(\"Category\", $0.label))`, plus `.chartLegend(position: .bottom)`; the slices are the categories. The data, empty-state and accessibility rules of the bar chart apply.",
++    link: "Link → `Link(title, destination: url)`: accent-colored words that open Safari; as a `Form` row it stays a row. Web pages the app shows itself use the iOS 26 SwiftUI `WebView`.",
++    labeledContent: "Labeled value → `LabeledContent(label, value: value)` as a `Form` or `List` row; the system right-aligns the value in the secondary color.",
++    secureField: "Secure field → `SecureField(placeholder, text: $password)` with `.textContentType(.password)` (`.newPassword` on sign-up) in a `Form` section.",
++    sectionFooter: "Section footer → the footer of the `Section` above it: `Section { rows } footer: { Text(text) }`.",
++    tip: "Tip → TipKit: a `struct` conforming to `Tip` with `title`, `message` and `image` (`Image(systemName:)`), shown inline with `TipView(tip)`; call `try? Tips.configure()` once at launch.",
++    photosPicker: "Photos picker → PhotosUI `PhotosPicker(selection: $items, matching: .images) { Label(title, systemImage: symbol) }` with `.buttonStyle(.bordered)` and `.buttonBorderShape(.capsule)`; load the picks with `loadTransferable(type:)`. It needs no photo-library permission.",
++    signInWithApple: "Sign in with Apple → AuthenticationServices `SignInWithAppleButton(.signIn) { $0.requestedScopes = [.fullName, .email] } onCompletion: { result in … }` with `.signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)` and `.frame(height: 50)`; add the Sign in with Apple capability.",
++    applePayButton: "Apple Pay button → PassKit `PayWithApplePayButton(.buy) { … }` with `.frame(height: 50)`; build the `PKPaymentRequest` from the order. Show it only where Apple Pay is offered.",
++    videoPlayer: "Video player → AVKit `VideoPlayer(player: player)` with `.aspectRatio(16 / 9, contentMode: .fit)` and 20pt continuous corners; the system draws the playback controls.",
++    photoGrid: "Photo grid → `LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2)` of square cells (`.aspectRatio(1, contentMode: .fill)`, clipped) in a `ScrollView`; a tap opens the photo with `.navigationTransition(.zoom(sourceID:in:))`.",
++    tabAccessory: "Tab bar accessory → `.tabViewBottomAccessory { … }` on the `TabView`: a compact row (artwork, title, play and next buttons) that floats as Liquid Glass above the tab bar and moves inline when the bar minimizes; adapt it with `@Environment(\\.tabViewBottomAccessoryPlacement)`.",
++    subscriptionStore: "Subscription store → StoreKit `SubscriptionStoreView(groupID: groupID) { marketing content with the title and subtitle }` with `.subscriptionStoreControlStyle(.prominentPicker)` and `.storeButton(.visible, for: .restorePurchases)`. The plans come from App Store Connect; the entries only name them.",
++    scatterChart: "Scatter chart → Swift Charts `PointMark(x: .value(…), y: .value(…))` with `.foregroundStyle(by: .value(\"Series\", $0.series))` and `.symbol(by: .value(\"Series\", $0.series))`, one series per entry. The data, empty-state and accessibility rules of the bar chart apply.",
++    stackedBarChart: "Stacked bar chart → Swift Charts `BarMark(x:, y:)` with `.foregroundStyle(by: .value(\"Series\", $0.series))`, which stacks by default, and `.chartLegend(position: .bottom)`; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
++    heatmapChart: "Heatmap → Swift Charts `RectangleMark(x: .value(\"Day\", $0.day), y: .value(\"Week\", $0.week))` with `.foregroundStyle(by: .value(\"Count\", $0.count))` and `.chartForegroundStyleScale(range: Gradient(colors: [.accentColor.opacity(0.1), .accentColor]))`; the columns are the categories. The data, empty-state and accessibility rules of the bar chart apply.",
++    custom: "Custom component → its own reusable SwiftUI view, built once from its entry under \"Custom components\" and placed wherever the layout names it, with the props listed there. Inside it, follow the same rules: system colors, Dynamic Type, SF Symbols, and Liquid Glass only where it floats above content.",
+   },
+   zh: {
+     box: "容器框 → 普通容器：用 `RoundedRectangle(cornerRadius:style: .continuous)` 按对照表的颜色填充，圆角取屏幕结构中给出的值，作为叠放在其上的组件的背景（ZStack，后写的在前面）。它没有自身行为，也不用 Liquid Glass。",
+@@ -293,6 +310,22 @@ const STYLE_NOTES_IOS: {
+     lineChart: "折线图 → Swift Charts：`LineMark(x:, y:)` 加 `.interpolationMethod(.catmullRom)`，每个值再加一个 `PointMark`，`.foregroundStyle(.tint)`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
+     areaChart: "面积图 → Swift Charts：`AreaMark(x:, y:)` 用 `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` 填充，同样的数据上再叠一条 `LineMark`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
+     pieChart: "环形图 → Swift Charts：`SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)`，加 `.cornerRadius(4)` 和 `.foregroundStyle(by: .value(\"Category\", $0.label))`，再加 `.chartLegend(position: .bottom)`；各扇区就是各分类。数据、空状态和辅助功能的要求与柱状图相同。",
++    link: "链接 → `Link(title, destination: url)`：强调色文字，点按后在 Safari 中打开；放在 `Form` 里时仍是一行。应用内显示的网页用 iOS 26 的 SwiftUI `WebView`。",
++    labeledContent: "键值行 → `LabeledContent(label, value: value)`，作为 `Form` 或 `List` 的一行；系统把值右对齐，并用次要颜色显示。",
++    secureField: "密码框 → `Form` section 中的 `SecureField(placeholder, text: $password)`，加 `.textContentType(.password)`（注册时用 `.newPassword`）。",
++    sectionFooter: "分组说明 → 上方 `Section` 的 footer：`Section { rows } footer: { Text(text) }`。",
++    tip: "提示卡片 → TipKit：定义一个遵循 `Tip` 的 `struct`，包含 `title`、`message` 和 `image`（`Image(systemName:)`），用 `TipView(tip)` 内嵌显示；启动时调用一次 `try? Tips.configure()`。",
++    photosPicker: "照片选择器 → PhotosUI 的 `PhotosPicker(selection: $items, matching: .images) { Label(title, systemImage: symbol) }`，加 `.buttonStyle(.bordered)` 和 `.buttonBorderShape(.capsule)`；用 `loadTransferable(type:)` 读取所选照片。它不需要照片库权限。",
++    signInWithApple: "通过 Apple 登录 → AuthenticationServices 的 `SignInWithAppleButton(.signIn) { $0.requestedScopes = [.fullName, .email] } onCompletion: { result in … }`，加 `.signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)` 和 `.frame(height: 50)`；并添加 Sign in with Apple capability。",
++    applePayButton: "Apple Pay 按钮 → PassKit 的 `PayWithApplePayButton(.buy) { … }`，加 `.frame(height: 50)`；根据订单构建 `PKPaymentRequest`。只在支持 Apple Pay 的地方显示。",
++    videoPlayer: "视频播放器 → AVKit 的 `VideoPlayer(player: player)`，加 `.aspectRatio(16 / 9, contentMode: .fit)` 和 20pt 连续圆角；播放控件由系统绘制。",
++    photoGrid: "照片网格 → `ScrollView` 中的 `LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2)`，单元格为正方形（`.aspectRatio(1, contentMode: .fill)` 并裁切）；点按后用 `.navigationTransition(.zoom(sourceID:in:))` 打开照片。",
++    tabAccessory: "标签栏附件 → `TabView` 上的 `.tabViewBottomAccessory { … }`：紧凑的一行（封面、标题、播放和下一首按钮），以 Liquid Glass 悬浮在标签栏上方，标签栏收起时移到同一行；用 `@Environment(\\.tabViewBottomAccessoryPlacement)` 适配两种位置。",
++    subscriptionStore: "订阅页 → StoreKit 的 `SubscriptionStoreView(groupID: groupID) { 含标题和副标题的营销内容 }`，加 `.subscriptionStoreControlStyle(.prominentPicker)` 和 `.storeButton(.visible, for: .restorePurchases)`。方案来自 App Store Connect，条目只用来给方案命名。",
++    scatterChart: "散点图 → Swift Charts 的 `PointMark(x: .value(…), y: .value(…))`，加 `.foregroundStyle(by: .value(\"Series\", $0.series))` 和 `.symbol(by: .value(\"Series\", $0.series))`，每个条目一个系列。数据、空状态和辅助功能的要求与柱状图相同。",
++    stackedBarChart: "堆叠柱状图 → Swift Charts 的 `BarMark(x:, y:)`，加 `.foregroundStyle(by: .value(\"Series\", $0.series))`（默认堆叠）和 `.chartLegend(position: .bottom)`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
++    heatmapChart: "热力图 → Swift Charts 的 `RectangleMark(x: .value(\"Day\", $0.day), y: .value(\"Week\", $0.week))`，加 `.foregroundStyle(by: .value(\"Count\", $0.count))` 和 `.chartForegroundStyleScale(range: Gradient(colors: [.accentColor.opacity(0.1), .accentColor]))`；各列就是各分类。数据、空状态和辅助功能的要求与柱状图相同。",
++    custom: "自定义组件 → 各自做成可复用的 SwiftUI 视图，按「自定义组件」中的条目只实现一次，在屏幕结构中出现该名称的地方复用，并传入那里列出的属性值。组件内部同样遵守规则：系统颜色、动态字体、SF Symbols，只在悬浮于内容上方时使用 Liquid Glass。",
+   },
+   ja: {},
+   ko: {},
+@@ -447,6 +480,21 @@ const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
+     menu: (c) => `a pull-down menu ${c.q(c.label)}, drawn open, with the items ${c.items}`,
+     actionSheet: (c) => `an action sheet titled ${c.q(c.label)}${c.sup ? ` with the message ${c.q(c.sup)}` : ""} and the actions ${c.list}, plus Cancel`,
+     emptyState: (c) => `an empty state${c.icon ? ` with the ${c.icon} symbol` : ""}, the title ${c.q(c.label)}${c.sup ? ` and the description ${c.q(c.sup)}` : ""}`,
++    link: (c) => `a link ${c.q(c.label)}`,
++    labeledContent: (c) => `a labeled value row ${c.q(c.label)} showing ${c.q(c.sup)}`,
++    secureField: (c) => `a secure (password) field with the placeholder ${c.q(c.label)}`,
++    sectionFooter: (c) => `a section footer ${c.q(c.label)} under the section above it`,
++    tip: (c) => `a tip${c.icon ? ` with the ${c.icon} symbol` : ""} titled ${c.q(c.label)}${c.sup ? ` saying ${c.q(c.sup)}` : ""}`,
++    photosPicker: (c) => `a photos picker button ${c.q(c.label)}`,
++    signInWithApple: (c) => `a Sign in with Apple button ${c.q(c.label)}`,
++    applePayButton: (c) => `an Apple Pay button ${c.q(c.label)}`,
++    videoPlayer: () => "a 16:9 video player",
++    photoGrid: () => "a grid of square photos, three across",
++    tabAccessory: (c) => `a tab bar accessory (mini player) ${c.q(c.label)}${c.sup ? ` by ${c.q(c.sup)}` : ""}`,
++    subscriptionStore: (c) => `a subscription store ${c.q(c.label)}${c.sup ? ` (${c.q(c.sup)})` : ""} offering ${c.list}`,
++    scatterChart: (c) => `a scatter chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} series: ${c.list}`,
++    stackedBarChart: (c) => `a stacked bar chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with three stacked series over ${c.n} categories: ${c.list}`,
++    heatmapChart: (c) => `a heatmap ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} columns: ${c.list}`,
+     barChart: (c) => `a bar chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} bars: ${c.list}`,
+     lineChart: (c) => `a line chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
+     areaChart: (c) => `an area chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
+@@ -464,6 +512,21 @@ const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
+     menu: (c) => `下拉菜单${c.q(c.label)}（展开状态），菜单项为 ${c.items}`,
+     actionSheet: (c) => `操作表，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}，操作为 ${c.list}，另有“取消”`,
+     emptyState: (c) => `空状态${c.icon ? `（符号 ${c.icon}）` : ""}，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}`,
++    link: (c) => `链接${c.q(c.label)}`,
++    labeledContent: (c) => `键值行${c.q(c.label)}，值为${c.q(c.sup)}`,
++    secureField: (c) => `密码输入框，占位文字为${c.q(c.label)}`,
++    sectionFooter: (c) => `分组说明${c.q(c.label)}，位于上一个分组下方`,
++    tip: (c) => `提示卡片${c.icon ? `（符号 ${c.icon}）` : ""}，标题为${c.q(c.label)}${c.sup ? `，内容为${c.q(c.sup)}` : ""}`,
++    photosPicker: (c) => `照片选择按钮${c.q(c.label)}`,
++    signInWithApple: (c) => `“通过 Apple 登录”按钮${c.q(c.label)}`,
++    applePayButton: (c) => `Apple Pay 按钮${c.q(c.label)}`,
++    videoPlayer: () => "16:9 视频播放器",
++    photoGrid: () => "每行 3 张的方形照片网格",
++    tabAccessory: (c) => `标签栏附件（迷你播放器）${c.q(c.label)}${c.sup ? `，艺人${c.q(c.sup)}` : ""}`,
++    subscriptionStore: (c) => `订阅页${c.q(c.label)}${c.sup ? `（${c.q(c.sup)}）` : ""}，方案为 ${c.list}`,
++    scatterChart: (c) => `散点图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，共 ${c.n} 个系列：${c.list}`,
++    stackedBarChart: (c) => `堆叠柱状图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，${c.n} 个分类，每根柱 3 个堆叠系列：${c.list}`,
++    heatmapChart: (c) => `热力图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，共 ${c.n} 列：${c.list}`,
+     barChart: (c) => `柱状图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，共 ${c.n} 根柱：${c.list}`,
+     lineChart: (c) => `折线图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
+     areaChart: (c) => `面积图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
+@@ -481,6 +544,21 @@ const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
+     menu: (c) => `プルダウンメニュー${c.q(c.label)}（開いた状態、項目 ${c.items}）`,
+     actionSheet: (c) => `アクションシート（タイトル${c.q(c.label)}${c.sup ? `、メッセージ${c.q(c.sup)}` : ""}、アクション ${c.list}、キャンセル付き）`,
+     emptyState: (c) => `空の状態の表示${c.icon ? `（シンボル ${c.icon}）` : ""}（タイトル${c.q(c.label)}${c.sup ? `、説明${c.q(c.sup)}` : ""}）`,
++    link: (c) => `リンク${c.q(c.label)}`,
++    labeledContent: (c) => `項目と値の行${c.q(c.label)}（値 ${c.q(c.sup)}）`,
++    secureField: (c) => `プレースホルダー${c.q(c.label)}のパスワード入力欄`,
++    sectionFooter: (c) => `セクション補足${c.q(c.label)}（上のセクションの下）`,
++    tip: (c) => `ヒント${c.icon ? `（シンボル ${c.icon}）` : ""}（タイトル${c.q(c.label)}${c.sup ? `、本文${c.q(c.sup)}` : ""}）`,
++    photosPicker: (c) => `写真ピッカーのボタン${c.q(c.label)}`,
++    signInWithApple: (c) => `Sign in with Apple ボタン${c.q(c.label)}`,
++    applePayButton: (c) => `Apple Pay ボタン${c.q(c.label)}`,
++    videoPlayer: () => "16:9 の動画プレーヤー",
++    photoGrid: () => "3 列の正方形の写真グリッド",
++    tabAccessory: (c) => `タブバーのアクセサリ（ミニプレーヤー）${c.q(c.label)}${c.sup ? `（${c.q(c.sup)}）` : ""}`,
++    subscriptionStore: (c) => `サブスクリプション画面${c.q(c.label)}${c.sup ? `（${c.q(c.sup)}）` : ""}（プラン ${c.list}）`,
++    scatterChart: (c) => `散布図${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 系列：${c.list}）`,
++    stackedBarChart: (c) => `積み上げ棒グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 区分、各 3 系列：${c.list}）`,
++    heatmapChart: (c) => `ヒートマップ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 列：${c.list}）`,
+     barChart: (c) => `棒グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 本：${c.list}）`,
+     lineChart: (c) => `折れ線グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
+     areaChart: (c) => `面グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
+@@ -498,6 +576,21 @@ const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
+     menu: (c) => `풀다운 메뉴 ${c.q(c.label)} (열린 상태, 항목 ${c.items})`,
+     actionSheet: (c) => `액션 시트 (제목 ${c.q(c.label)}${c.sup ? `, 메시지 ${c.q(c.sup)}` : ""}, 동작 ${c.list}, 취소 포함)`,
+     emptyState: (c) => `빈 상태 화면${c.icon ? ` (심볼 ${c.icon})` : ""} (제목 ${c.q(c.label)}${c.sup ? `, 설명 ${c.q(c.sup)}` : ""})`,
++    link: (c) => `링크 ${c.q(c.label)}`,
++    labeledContent: (c) => `레이블과 값 행 ${c.q(c.label)} (값 ${c.q(c.sup)})`,
++    secureField: (c) => `자리표시자가 ${c.q(c.label)}인 비밀번호 입력란`,
++    sectionFooter: (c) => `섹션 설명 ${c.q(c.label)} (위 섹션 아래)`,
++    tip: (c) => `팁${c.icon ? ` (심볼 ${c.icon})` : ""} (제목 ${c.q(c.label)}${c.sup ? `, 내용 ${c.q(c.sup)}` : ""})`,
++    photosPicker: (c) => `사진 선택 버튼 ${c.q(c.label)}`,
++    signInWithApple: (c) => `Apple로 로그인 버튼 ${c.q(c.label)}`,
++    applePayButton: (c) => `Apple Pay 버튼 ${c.q(c.label)}`,
++    videoPlayer: () => "16:9 비디오 플레이어",
++    photoGrid: () => "한 줄에 3장인 정사각형 사진 그리드",
++    tabAccessory: (c) => `탭 바 액세서리(미니 플레이어) ${c.q(c.label)}${c.sup ? ` (${c.q(c.sup)})` : ""}`,
++    subscriptionStore: (c) => `구독 화면 ${c.q(c.label)}${c.sup ? ` (${c.q(c.sup)})` : ""} (플랜 ${c.list})`,
++    scatterChart: (c) => `산점도 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 계열: ${c.list})`,
++    stackedBarChart: (c) => `누적 막대 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 분류, 각 3개 계열: ${c.list})`,
++    heatmapChart: (c) => `히트맵 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 열: ${c.list})`,
+     barChart: (c) => `막대 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 막대: ${c.list})`,
+     lineChart: (c) => `꺾은선 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
+     areaChart: (c) => `영역 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
+@@ -509,6 +602,7 @@ const QUOTE: Record<Lang, (s: string) => string> = { ja: (s) => `「${s.trim()}
+ 
+ /** the layout's words for an iOS-only part, in any target's prompt; null for every other kind */
+ export function iosItemText(it: Item, lang: Lang): string | null {
++  if (it.kind === "custom") return customItemText(it, lang);
+   if (!isIosKind(it.kind)) return null;
+   const q = QUOTE[lang];
+   const sep = lang === "ja" || lang === "zh" ? "、" : ", ";
+diff --git a/lib/prompt.ts b/lib/prompt.ts
+index c954d97..e4eddbc 100644
+--- a/lib/prompt.ts
++++ b/lib/prompt.ts
+@@ -2,6 +2,7 @@ import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
+ import { constrainModalRails } from "./rail";
+ import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, iosItemText, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
+ import { sfToMaterial, sfToNames } from "./sfsymbols";
++import { customSection, customStyleNote } from "./custom";
+ import {
+   CONTENT_W,
+   Place,
+@@ -1791,7 +1792,7 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
+       }
+     }
+   const styleNotes = kindsUsed
+-    .map((k) => (platform === "ios" ? styleNoteIos(k, lang) : k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
++    .map((k) => (platform === "ios" ? styleNoteIos(k, lang) : k === "custom" ? customStyleNote(lang, platform) : k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
+     .filter((s): s is string => !!s);
+ 
+   const title = only ? ph.titleOnly(q(only.name || ph.screen)) : doc.title.trim() || ph.titleAll(frames.length);
+@@ -1857,6 +1858,8 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
+     lines.push(ph.styleIntro);
+     for (const s of styleNotes) lines.push(`- ${s}`);
+   }
++  /* each custom component once, so the code model builds it once and reuses it */
++  lines.push(...customSection(groups.flatMap((g) => g.items), lang, platform));
+ 
+   lines.push("");
+   lines.push(ph.hGeneral);
+diff --git a/lib/sfsymbols.ts b/lib/sfsymbols.ts
+index cc6293d..9bbcb72 100644
+--- a/lib/sfsymbols.ts
++++ b/lib/sfsymbols.ts
+@@ -276,6 +276,186 @@ trophy|emoji_events|trophy award
+ medal|military_tech|medal award
+ pawprint|pets|pet animal
+ rectangle.portrait.and.arrow.right|logout|logout sign out
++app.badge|notifications_active|badge notification
++bell.badge|notifications_active|badge notification unread
++arrow.down.circle|arrow_circle_down|download down
++arrow.up.circle|arrow_circle_up|upload up
++arrow.right.circle|arrow_circle_right|next forward
++arrow.left.circle|arrow_circle_left|back previous
++arrow.down.to.line|vertical_align_bottom|download bottom
++arrow.up.to.line|vertical_align_top|top upload
++arrow.turn.up.right|turn_right|turn directions
++arrow.triangle.branch|alt_route|branch route
++arrow.triangle.turn.up.right.diamond|directions|directions navigate
++arrow.down.doc|file_download|download document
++square.and.arrow.down.on.square|save_alt|save
++square.on.square|filter_none|copy duplicate
++plus.app|add_box|add new
++plus.square|add_box|add new
++minus.square|indeterminate_check_box|remove
++checkmark.square|check_box|checkbox done
++square|check_box_outline_blank|checkbox empty square
++checkmark.seal|verified|verified badge
++checkmark.shield|verified_user|secure verified
++xmark.octagon|report|stop error
++exclamationmark.bubble|feedback|feedback report
++questionmark.bubble|contact_support|support help
++person.crop.square|account_box|profile account
++person.text.rectangle|badge|id card
++person.badge.minus|person_remove|remove friend
++person.badge.key|admin_panel_settings|admin access
++person.crop.circle.badge.plus|person_add|add contact
++figure.stand|accessibility|person
++accessibility|accessibility_new|accessibility
++figure.and.child.holdinghands|family_restroom|family child
++hand.tap|touch_app|tap touch
++hand.point.up.left|pan_tool_alt|point
++hand.draw|draw|draw
++signature|draw|signature sign
++scribble|gesture|scribble draw
++pencil.tip|edit|pencil tip
++highlighter|format_ink_highlighter|highlight marker
++ruler|straighten|measure ruler
++eyedropper|colorize|eyedropper color
++paintbrush.pointed|brush|paint
++photo.artframe|image|art frame picture
++camera.viewfinder|center_focus_strong|scan focus camera
++viewfinder|crop_free|scan frame
++crop|crop|crop
++crop.rotate|crop_rotate|rotate crop
++rotate.right|rotate_right|rotate
++wand.and.rays|auto_fix_normal|enhance magic
++dial.min|speed|dial
++speedometer|speed|speed speedometer
++gauge.with.dots.needle.33percent|speed|gauge meter
++calendar.circle|event|calendar
++calendar.day.timeline.left|view_day|agenda day
++calendar.badge.clock|event_upcoming|scheduled upcoming
++deskclock|schedule|clock alarm
++sunrise|wb_twilight|sunrise morning
++sunset|wb_twilight|sunset evening
++cloud.sun|partly_cloudy_day|weather cloudy
++cloud.bolt|thunderstorm|storm thunder
++cloud.snow|weather_snowy|snow
++wind|air|wind
++tornado|tornado|tornado storm
++moon.stars|bedtime|night sleep
++moon.zzz|bedtime|sleep night
++zzz|snooze|sleep snooze
++building|domain|office building
++mappin.circle|location_on|pin location
++signpost.right|signpost|sign directions
++point.topleft.down.to.point.bottomright.curvepath|route|route path
++location.circle|my_location|current location
++scope|gps_fixed|target locate
++binoculars|travel_explore|explore look
++suitcase|luggage|travel trip
++suitcase.rolling|luggage|luggage travel
++ticket|confirmation_number|ticket event
++train.side.front.car|train|train
++ferry|directions_boat|boat ferry
++sailboat|sailing|sail boat
++scooter|electric_scooter|scooter
++fuelpump|local_gas_station|fuel gas
++ev.charger|ev_station|charging electric
++parkingsign|local_parking|parking
++bandage|healing|bandage injury
++syringe|vaccines|vaccine injection
++waveform.path.ecg|monitor_heart|heart rate ecg
++brain.head.profile|psychology|mind brain
++brain|psychology|brain
++ear|hearing|hearing ear
++hands.sparkles|clean_hands|wash clean
++figure.yoga|self_improvement|yoga meditation
++figure.pool.swim|pool|swim
++figure.hiking|hiking|hike
++sportscourt|sports|sports
++soccerball|sports_soccer|soccer football
++basketball|sports_basketball|basketball
++tennis.racket|sports_tennis|tennis
++flag.checkered|sports_score|finish race
++cart.badge.plus|add_shopping_cart|add to cart
++wallet.pass|wallet|wallet pass
++dollarsign|attach_money|money dollar
++eurosign|euro|euro
++yensign|currency_yen|yen
++percent|percent|percent discount
++barcode.viewfinder|qr_code_scanner|scan barcode
++qrcode.viewfinder|qr_code_scanner|scan qr
++chart.bar.xaxis|bar_chart|chart bar
++chart.line.downtrend.xyaxis|trending_down|decline down chart
++chart.dots.scatter|scatter_plot|scatter chart
++function|functions|math function
++sum|functions|sum total
++number|tag|number hash
++textformat.size|format_size|text size
++textformat.abc|abc|text abc
++doc.plaintext|article|text document
++doc.badge.plus|note_add|new document
++doc.on.clipboard|content_paste|paste clipboard
++list.bullet.rectangle|list_alt|list
++list.clipboard|assignment|checklist task
++checklist|checklist|checklist todo
++folder.badge.plus|create_new_folder|new folder
++tray.and.arrow.down|move_to_inbox|inbox download
++tray.and.arrow.up|outbox|outbox upload
++server.rack|dns|server
++network|lan|network
++link.circle|link|link
++personalhotspot|wifi_tethering|hotspot
++cellularbars|signal_cellular_alt|cellular signal
++battery.0percent|battery_0_bar|battery empty
++battery.50percent|battery_4_bar|battery half
++bolt.car|electric_car|ev car
++powerplug|power|plug
++fan|mode_fan|fan
++thermometer.snowflake|ac_unit|cold
++lock.shield|security|security
++faceid|face|face id
++touchid|fingerprint|fingerprint touch id
++person.badge.shield.checkmark|verified_user|verified
++megaphone|campaign|announce megaphone
++speaker.wave.3|volume_up|loud volume
++music.mic|mic_external_on|karaoke mic
++guitars|music_note|guitar music
++pianokeys|piano|piano
++radio|radio|radio
++play.circle|play_circle|play
++pause.circle|pause_circle|pause
++play.rectangle|smart_display|video play
++record.circle|radio_button_checked|record
++goforward.15|forward_10|skip forward
++gobackward.15|replay_10|skip back
++repeat.1|repeat_one|repeat one
++captions.bubble|closed_caption|captions subtitles
++pip|picture_in_picture|picture in picture
++square.grid.3x3|apps|grid apps
++rectangle.grid.1x2|view_agenda|rows layout
++rectangle.split.3x1|view_week|columns
++macwindow|web_asset|window
++safari|explore|safari browser
++book.closed|book|book
++magazine|import_contacts|magazine
++pencil.and.ruler|architecture|design tools
++backpack|backpack|school bag
++balloon|celebration|party balloon
++birthday.cake|cake|birthday cake
++wineglass|wine_bar|wine drink
++mug|coffee|mug coffee
++takeoutbag.and.cup.and.straw|takeout_dining|takeout food
++refrigerator|kitchen|fridge kitchen
++washer|local_laundry_service|laundry
++tshirt|checkroom|clothes
++eyeglasses|eyeglasses|glasses
++crown|workspace_premium|premium crown
++star.circle|stars|featured star
++bell.and.waves.left.and.right|notifications_active|ring alert
++envelope.badge|mark_email_unread|unread mail
++phone.arrow.up.right|call_made|outgoing call
++phone.down|call_end|hang up
++video.slash|videocam_off|video off
++text.bubble|sms|text message
++ellipsis.bubble|sms|typing message
+ `;
+ 
+ export const SF_SYMBOLS: SfSymbol[] = RAW.trim()
+diff --git a/lib/tokens.ts b/lib/tokens.ts
+index aa33cff..da6e02a 100644
+--- a/lib/tokens.ts
++++ b/lib/tokens.ts
+@@ -1,4 +1,5 @@
+ import type { CSSProperties } from "react";
++import { CUSTOM_KIND_SPEC, customSizeOf } from "./custom";
+ import { IOS_ENTRY_BOUNDS, IOS_KINDS, IOS_KIND_SPEC, IosKind, applyIosDefaults, iosDefaultTabs, iosSizeOf } from "./iosKinds";
+ import { FAB_MENU_TABS, KIND_TEXT, Lang, NAV_TABS, SPLIT_MENU_TABS, TAB_LABELS, getLang, t, SELECT_OPTIONS } from "./i18n";
+ import { Contrast, isLightColor, schemeFromSeed } from "./color";
+@@ -617,7 +618,9 @@ export type Kind =
+   | "datePicker"
+   | "timePicker"
+   /* SwiftUI controls and Swift Charts that only the iOS target offers (lib/iosKinds.ts) */
+-  | IosKind;
++  | IosKind
++  /* a part the designer or an AI defined as data (lib/custom.ts) */
++  | "custom";
+ 
+ /** how a carousel arranges its items: M3's four layouts */
+ export type CarouselLayout = "multiBrowse" | "uncontained" | "hero" | "fullScreen";
+@@ -928,6 +931,7 @@ export type KindSpec = {
+ 
+ export const KIND_SPEC: Record<Kind, KindSpec> = {
+   ...IOS_KIND_SPEC,
++  custom: CUSTOM_KIND_SPEC,
+   box: {
+     label: "Box",
+     noun: "ボックス",
+@@ -1623,6 +1627,7 @@ export const KIND_ORDER: Kind[] = [
+   "linearProgress",
+   "circularProgress",
+   ...IOS_KINDS,
++  "custom",
+ ];
+ 
+ /* ---------- screen data ---------- */
+@@ -1674,6 +1679,10 @@ export type Item = {
+   /** Progress track thickness in dp (TRACK_MIN..TRACK_MAX); omitted uses the standard 4dp stroke. */
+   trackThickness?: number;
+   contained?: boolean;
++  /** a custom component's whole definition (kind "custom", lib/custom.ts); every instance carries it */
++  custom?: import("./custom").CustomDef;
++  /** the values this custom component instance passes to its definition's props */
++  props?: Record<string, string>;
+   /** free text the author writes about what this part does */
+   note?: string;
+   /** what `note` said before the AI rewrote it, so the rewrite can be undone */
+@@ -1772,9 +1781,11 @@ export type FabKind = (typeof FAB_KINDS)[number];
+ export const isFab = (k: Kind): k is FabKind => (FAB_KINDS as readonly string[]).includes(k);
+ /** parts the palette does not list on their own: a FAB's other two shapes are reached from its
+  *  own panel, where the three sit side by side. A saved sketch may still hold any of them. */
+-export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress"];
++export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress", "custom"];
+ /** kinds the parts palette offers only while the prompt targets iOS */
+ export const IOS_ONLY_KINDS: Kind[] = [...IOS_KINDS];
++/** kinds the canvas draws in their own look on every target: the iOS-only kinds and custom components */
++export const SELF_DRAWN_KINDS: Kind[] = [...IOS_KINDS, "custom"];
+ /** how tall an extended FAB is drawn, and what it is made of at that height */
+ export const extendedFabHeight = (it: Item) => clamp(Math.round(it.size2 ?? 56), 56, FAB_H_MAX);
+ export function extendedFabMetrics(h: number) {
+@@ -2534,7 +2545,7 @@ export function sizeOf(it: Item, widths: Record<string, number>) {
+     case "navRail":
+       return { w: railWidth(it), h: it.size2 ?? s.h };
+     default:
+-      return iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h };
++      return it.kind === "custom" ? customSizeOf(it) : (iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h });
+   }
+ }
+ 
+diff --git a/public/agent.md b/public/agent.md
+index 32ee8ad..4dc961c 100644
+--- a/public/agent.md
++++ b/public/agent.md
+@@ -164,9 +164,51 @@ Set `"platform": "ios"` when the person asks for an iPhone or iPad app or for Sw
+ | `lineChart` | line chart | as `barChart` | 380 × 240 |
+ | `areaChart` | area chart | as `barChart` | 380 × 240 |
+ | `pieChart` | donut chart | `label` title, `tabs` the slices as `{ "label" }` | 380 × 260 |
++| `scatterChart` | scatter chart | `label` title, `supporting` subtitle, `tabs` one `{ "label" }` per series (1–4) | 380 × 240 |
++| `stackedBarChart` | stacked bar chart | as `barChart`; three stacked series per bar | 380 × 240 |
++| `heatmapChart` | heatmap (RectangleMark grid) | `label` title, `supporting` subtitle, `tabs` the columns | 380 × 220 |
++| `link` | link (opens Safari) | `label` | 380 × 44 |
++| `labeledContent` | label and value row | `label`, `supporting` the value | 380 × 44 |
++| `secureField` | password field | `label` placeholder | 380 × 44 |
++| `sectionFooter` | footnote under a grouped section | `label` | 380 × 40 |
++| `tip` | TipKit tip | `icon`, `label` title, `supporting` message | 380 × 96 |
++| `photosPicker` | PhotosPicker button | `icon`, `label` | 220 × 44 |
++| `signInWithApple` | Sign in with Apple button | `label` | 380 × 50 |
++| `applePayButton` | Apple Pay button | `label` | 380 × 50 |
++| `videoPlayer` | video player | `size` width (height follows 16:9) | 380 × 214 |
++| `photoGrid` | three-across photo grid | `size` width, `size2` height | 380 × 254 |
++| `tabAccessory` | iOS 26 tab bar accessory (mini player), put right above the `bottomNav` | `icon`, `label` title, `supporting` subtitle | 380 × 56 |
++| `subscriptionStore` | StoreKit subscription store (paywall) | `label` title, `supporting` subtitle, `tabs` the plans as `{ "label" }` | 380 × (200 + 60 per plan) |
+ 
+ The heights a chart shows on the canvas are illustrative; the prompt asks for the app's real data. A settings screen on iOS is a `sectionHeader` followed by a run of `listItem`s (one group, `"axis": "y"`), once per section.
+ 
++## Custom components
++
++When no built-in kind fits (a rating row, a profile header, a stat tile, a step tracker…), define a custom component: an item of `"kind": "custom"` that carries the whole definition in `custom`. The canvas draws it from its `layout`, and the prompt describes each component once, under "Custom components", with a sketch generated from the layout, so the code model builds it once and reuses it wherever its instances appear. Use a built-in kind whenever one fits.
++
++```json
++{ "id": "r1", "kind": "custom", "label": "", "icon": null, "variant": "filled", "size": 380, "size2": 44,
++  "props": { "rating": "4" },
++  "custom": {
++    "name": "RatingStars",
++    "description": "A read-only 0–5 star rating.",
++    "props": { "rating": "3" },
++    "w": 380, "h": 44,
++    "layout": { "type": "hstack", "spacing": 4, "align": "center", "children": [
++      { "type": "repeat", "count": 5, "child": { "type": "zstack", "children": [
++        { "type": "icon", "name": "sf:star.fill", "size": 22, "color": "orange", "if": "{{i}} <= {{rating}}" },
++        { "type": "icon", "name": "sf:star", "size": 22, "color": "tertiary", "if": "{{i}} > {{rating}}" } ] } },
++      { "type": "spacer" } ] }
++  } }
++```
++
++- `name` is UpperCamelCase and becomes the type name (`struct RatingStars: View`). Every instance of a component carries the same `custom` object, copied as is; instances differ only in `props`, `label`, `supporting`, `icon`, `size` and `size2`.
++- `props` in the definition lists every prop with its default (strings); `props` on the instance overrides them. Templates `{{name}}` in text, icon names, `count`, `value` and `if` read the props, plus `{{label}}`, `{{supporting}}` and `{{icon}}` from the instance, and `{{i}}` (1, 2, 3…) inside a `repeat`.
++- `layout` nodes: `vstack` / `hstack` / `zstack` (`children`, `spacing`, `padding`, `align` start/center/end, `fill`, `radius`, `glass`, `grow`), `text` (`text`, `size`, `weight` regular/medium/semibold/bold, `color`, `lines`), `icon` (`name` a Material name or `sf:` SF Symbol, `size`, `color`), `shape` (`shape` rect/circle/capsule, `w`, `h`, `fill`, `radius`), `image` (`w`, `h`, `radius`, `src` https only), `spacer` (`size`, or flexible without), `progress` (`value` 0–100, `color`), `repeat` (`count` up to 50, `child`). Any node may have `if`: `a <= b`, `<`, `>=`, `>`, `==` or `!=` after the templates are filled in.
++- Colors are roles, not hex, so they follow the target and dark mode: `primary`, `onPrimary`, `label`, `secondary`, `tertiary`, `fill`, `row`, `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `white`, `black` (`#RRGGBB` is accepted when a brand color is required).
++- Limits: depth 8, 200 nodes, 40 children per stack. Nothing in a definition runs; a definition that breaks a rule makes the whole link invalid.
++- `swiftui` (optional, iOS target): a reference implementation the prompt passes on verbatim. Write it only when you are sure it compiles; the sketch from `layout` is always included.
++
+ ## Keep it simple
+ 
+ - Leave what the app does not need empty: `"icon": null`, no `icon2`, no `note`, no `supporting`. A top app bar with just a title is normal; not every bar needs a menu and a search icon, not every list row needs a trailing chevron.

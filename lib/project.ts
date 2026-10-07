@@ -1,3 +1,4 @@
+import { isCustomDef, isProps } from "./custom";
 import { CAROUSEL_LAYOUTS, DATE_LAYOUTS, Doc, KIND_ORDER, Kind, TIME_LAYOUTS, VARIANTS, isCardAlign, isCardImagePos, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
 
 /* A project file is the Doc as JSON, nothing more. Reading one back only checks
@@ -39,6 +40,8 @@ const validItem = (item: unknown) =>
   (item.note === undefined || typeof item.note === "string") &&
   (item.layout === undefined || (typeof item.layout === "string" && LAYOUTS.has(item.layout))) &&
   optionalNumber(item.count) &&
+  (item.custom === undefined || isCustomDef(item.custom)) &&
+  (item.props === undefined || isProps(item.props)) &&
   validTabs(item.tabs);
 
 const validGroup = (group: unknown) =>

@@ -2,6 +2,7 @@ import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
 import { constrainModalRails } from "./rail";
 import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, iosItemText, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
 import { sfToMaterial, sfToNames } from "./sfsymbols";
+import { customSection, customStyleNote } from "./custom";
 import {
   CONTENT_W,
   Place,
@@ -1791,7 +1792,7 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
       }
     }
   const styleNotes = kindsUsed
-    .map((k) => (platform === "ios" ? styleNoteIos(k, lang) : k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
+    .map((k) => (platform === "ios" ? styleNoteIos(k, lang) : k === "custom" ? customStyleNote(lang, platform) : k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
     .filter((s): s is string => !!s);
 
   const title = only ? ph.titleOnly(q(only.name || ph.screen)) : doc.title.trim() || ph.titleAll(frames.length);
@@ -1857,6 +1858,8 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
     lines.push(ph.styleIntro);
     for (const s of styleNotes) lines.push(`- ${s}`);
   }
+  /* each custom component once, so the code model builds it once and reuses it */
+  lines.push(...customSection(groups.flatMap((g) => g.items), lang, platform));
 
   lines.push("");
   lines.push(ph.hGeneral);

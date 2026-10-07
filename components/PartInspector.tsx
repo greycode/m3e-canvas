@@ -510,6 +510,23 @@ export function PartInspector({
         </Section>
       )}
 
+      {/* ---------- custom components: the definition's name and the props this instance passes ---------- */}
+      {kind === "custom" && (
+        <Section id="part-custom" icon="widgets" title={item.custom?.name ?? t("text", lang)} p={p}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {item.custom?.description && <div style={{ fontSize: 12, lineHeight: 1.4, color: p.onSurfaceVariant }}>{item.custom.description}</div>}
+            <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
+            <Field value={item.supporting ?? ""} onChange={(supporting) => onChange({ supporting })} placeholder={t("supporting", lang)} p={p} />
+            {Object.entries(item.custom?.props ?? {}).map(([key, fallback]) => (
+              <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: p.onSurfaceVariant }}>
+                {key}
+                <Field value={item.props?.[key] ?? fallback} onChange={(v) => onChange({ props: { ...item.props, [key]: v } })} placeholder={fallback} p={p} />
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* ---------- iOS-only parts: their words and their entries ---------- */}
       {IOS_ONLY_KINDS.includes(kind) && (spec.hasLabel || spec.hasIcon) && (
         <Section id="part-text" icon="short_text" title={t("text", lang)} p={p}>

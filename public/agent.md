@@ -164,8 +164,50 @@ Set `"platform": "ios"` when the person asks for an iPhone or iPad app or for Sw
 | `lineChart` | line chart | as `barChart` | 380 × 240 |
 | `areaChart` | area chart | as `barChart` | 380 × 240 |
 | `pieChart` | donut chart | `label` title, `tabs` the slices as `{ "label" }` | 380 × 260 |
+| `scatterChart` | scatter chart | `label` title, `supporting` subtitle, `tabs` one `{ "label" }` per series (1–4) | 380 × 240 |
+| `stackedBarChart` | stacked bar chart | as `barChart`; three stacked series per bar | 380 × 240 |
+| `heatmapChart` | heatmap (RectangleMark grid) | `label` title, `supporting` subtitle, `tabs` the columns | 380 × 220 |
+| `link` | link (opens Safari) | `label` | 380 × 44 |
+| `labeledContent` | label and value row | `label`, `supporting` the value | 380 × 44 |
+| `secureField` | password field | `label` placeholder | 380 × 44 |
+| `sectionFooter` | footnote under a grouped section | `label` | 380 × 40 |
+| `tip` | TipKit tip | `icon`, `label` title, `supporting` message | 380 × 96 |
+| `photosPicker` | PhotosPicker button | `icon`, `label` | 220 × 44 |
+| `signInWithApple` | Sign in with Apple button | `label` | 380 × 50 |
+| `applePayButton` | Apple Pay button | `label` | 380 × 50 |
+| `videoPlayer` | video player | `size` width (height follows 16:9) | 380 × 214 |
+| `photoGrid` | three-across photo grid | `size` width, `size2` height | 380 × 254 |
+| `tabAccessory` | iOS 26 tab bar accessory (mini player), put right above the `bottomNav` | `icon`, `label` title, `supporting` subtitle | 380 × 56 |
+| `subscriptionStore` | StoreKit subscription store (paywall) | `label` title, `supporting` subtitle, `tabs` the plans as `{ "label" }` | 380 × (200 + 60 per plan) |
 
 The heights a chart shows on the canvas are illustrative; the prompt asks for the app's real data. A settings screen on iOS is a `sectionHeader` followed by a run of `listItem`s (one group, `"axis": "y"`), once per section.
+
+## Custom components
+
+When no built-in kind fits (a rating row, a profile header, a stat tile, a step tracker…), define a custom component: an item of `"kind": "custom"` that carries the whole definition in `custom`. The canvas draws it from its `layout`, and the prompt describes each component once, under "Custom components", with a sketch generated from the layout, so the code model builds it once and reuses it wherever its instances appear. Use a built-in kind whenever one fits.
+
+```json
+{ "id": "r1", "kind": "custom", "label": "", "icon": null, "variant": "filled", "size": 380, "size2": 44,
+  "props": { "rating": "4" },
+  "custom": {
+    "name": "RatingStars",
+    "description": "A read-only 0–5 star rating.",
+    "props": { "rating": "3" },
+    "w": 380, "h": 44,
+    "layout": { "type": "hstack", "spacing": 4, "align": "center", "children": [
+      { "type": "repeat", "count": 5, "child": { "type": "zstack", "children": [
+        { "type": "icon", "name": "sf:star.fill", "size": 22, "color": "orange", "if": "{{i}} <= {{rating}}" },
+        { "type": "icon", "name": "sf:star", "size": 22, "color": "tertiary", "if": "{{i}} > {{rating}}" } ] } },
+      { "type": "spacer" } ] }
+  } }
+```
+
+- `name` is UpperCamelCase and becomes the type name (`struct RatingStars: View`). Every instance of a component carries the same `custom` object, copied as is; instances differ only in `props`, `label`, `supporting`, `icon`, `size` and `size2`.
+- `props` in the definition lists every prop with its default (strings); `props` on the instance overrides them. Templates `{{name}}` in text, icon names, `count`, `value` and `if` read the props, plus `{{label}}`, `{{supporting}}` and `{{icon}}` from the instance, and `{{i}}` (1, 2, 3…) inside a `repeat`.
+- `layout` nodes: `vstack` / `hstack` / `zstack` (`children`, `spacing`, `padding`, `align` start/center/end, `fill`, `radius`, `glass`, `grow`), `text` (`text`, `size`, `weight` regular/medium/semibold/bold, `color`, `lines`), `icon` (`name` a Material name or `sf:` SF Symbol, `size`, `color`), `shape` (`shape` rect/circle/capsule, `w`, `h`, `fill`, `radius`), `image` (`w`, `h`, `radius`, `src` https only), `spacer` (`size`, or flexible without), `progress` (`value` 0–100, `color`), `repeat` (`count` up to 50, `child`). Any node may have `if`: `a <= b`, `<`, `>=`, `>`, `==` or `!=` after the templates are filled in.
+- Colors are roles, not hex, so they follow the target and dark mode: `primary`, `onPrimary`, `label`, `secondary`, `tertiary`, `fill`, `row`, `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `white`, `black` (`#RRGGBB` is accepted when a brand color is required).
+- Limits: depth 8, 200 nodes, 40 children per stack. Nothing in a definition runs; a definition that breaks a rule makes the whole link invalid.
+- `swiftui` (optional, iOS target): a reference implementation the prompt passes on verbatim. Write it only when you are sure it compiles; the sketch from `layout` is always included.
 
 ## Keep it simple
 

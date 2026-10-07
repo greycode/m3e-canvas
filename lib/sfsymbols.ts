@@ -276,6 +276,186 @@ trophy|emoji_events|trophy award
 medal|military_tech|medal award
 pawprint|pets|pet animal
 rectangle.portrait.and.arrow.right|logout|logout sign out
+app.badge|notifications_active|badge notification
+bell.badge|notifications_active|badge notification unread
+arrow.down.circle|arrow_circle_down|download down
+arrow.up.circle|arrow_circle_up|upload up
+arrow.right.circle|arrow_circle_right|next forward
+arrow.left.circle|arrow_circle_left|back previous
+arrow.down.to.line|vertical_align_bottom|download bottom
+arrow.up.to.line|vertical_align_top|top upload
+arrow.turn.up.right|turn_right|turn directions
+arrow.triangle.branch|alt_route|branch route
+arrow.triangle.turn.up.right.diamond|directions|directions navigate
+arrow.down.doc|file_download|download document
+square.and.arrow.down.on.square|save_alt|save
+square.on.square|filter_none|copy duplicate
+plus.app|add_box|add new
+plus.square|add_box|add new
+minus.square|indeterminate_check_box|remove
+checkmark.square|check_box|checkbox done
+square|check_box_outline_blank|checkbox empty square
+checkmark.seal|verified|verified badge
+checkmark.shield|verified_user|secure verified
+xmark.octagon|report|stop error
+exclamationmark.bubble|feedback|feedback report
+questionmark.bubble|contact_support|support help
+person.crop.square|account_box|profile account
+person.text.rectangle|badge|id card
+person.badge.minus|person_remove|remove friend
+person.badge.key|admin_panel_settings|admin access
+person.crop.circle.badge.plus|person_add|add contact
+figure.stand|accessibility|person
+accessibility|accessibility_new|accessibility
+figure.and.child.holdinghands|family_restroom|family child
+hand.tap|touch_app|tap touch
+hand.point.up.left|pan_tool_alt|point
+hand.draw|draw|draw
+signature|draw|signature sign
+scribble|gesture|scribble draw
+pencil.tip|edit|pencil tip
+highlighter|format_ink_highlighter|highlight marker
+ruler|straighten|measure ruler
+eyedropper|colorize|eyedropper color
+paintbrush.pointed|brush|paint
+photo.artframe|image|art frame picture
+camera.viewfinder|center_focus_strong|scan focus camera
+viewfinder|crop_free|scan frame
+crop|crop|crop
+crop.rotate|crop_rotate|rotate crop
+rotate.right|rotate_right|rotate
+wand.and.rays|auto_fix_normal|enhance magic
+dial.min|speed|dial
+speedometer|speed|speed speedometer
+gauge.with.dots.needle.33percent|speed|gauge meter
+calendar.circle|event|calendar
+calendar.day.timeline.left|view_day|agenda day
+calendar.badge.clock|event_upcoming|scheduled upcoming
+deskclock|schedule|clock alarm
+sunrise|wb_twilight|sunrise morning
+sunset|wb_twilight|sunset evening
+cloud.sun|partly_cloudy_day|weather cloudy
+cloud.bolt|thunderstorm|storm thunder
+cloud.snow|weather_snowy|snow
+wind|air|wind
+tornado|tornado|tornado storm
+moon.stars|bedtime|night sleep
+moon.zzz|bedtime|sleep night
+zzz|snooze|sleep snooze
+building|domain|office building
+mappin.circle|location_on|pin location
+signpost.right|signpost|sign directions
+point.topleft.down.to.point.bottomright.curvepath|route|route path
+location.circle|my_location|current location
+scope|gps_fixed|target locate
+binoculars|travel_explore|explore look
+suitcase|luggage|travel trip
+suitcase.rolling|luggage|luggage travel
+ticket|confirmation_number|ticket event
+train.side.front.car|train|train
+ferry|directions_boat|boat ferry
+sailboat|sailing|sail boat
+scooter|electric_scooter|scooter
+fuelpump|local_gas_station|fuel gas
+ev.charger|ev_station|charging electric
+parkingsign|local_parking|parking
+bandage|healing|bandage injury
+syringe|vaccines|vaccine injection
+waveform.path.ecg|monitor_heart|heart rate ecg
+brain.head.profile|psychology|mind brain
+brain|psychology|brain
+ear|hearing|hearing ear
+hands.sparkles|clean_hands|wash clean
+figure.yoga|self_improvement|yoga meditation
+figure.pool.swim|pool|swim
+figure.hiking|hiking|hike
+sportscourt|sports|sports
+soccerball|sports_soccer|soccer football
+basketball|sports_basketball|basketball
+tennis.racket|sports_tennis|tennis
+flag.checkered|sports_score|finish race
+cart.badge.plus|add_shopping_cart|add to cart
+wallet.pass|wallet|wallet pass
+dollarsign|attach_money|money dollar
+eurosign|euro|euro
+yensign|currency_yen|yen
+percent|percent|percent discount
+barcode.viewfinder|qr_code_scanner|scan barcode
+qrcode.viewfinder|qr_code_scanner|scan qr
+chart.bar.xaxis|bar_chart|chart bar
+chart.line.downtrend.xyaxis|trending_down|decline down chart
+chart.dots.scatter|scatter_plot|scatter chart
+function|functions|math function
+sum|functions|sum total
+number|tag|number hash
+textformat.size|format_size|text size
+textformat.abc|abc|text abc
+doc.plaintext|article|text document
+doc.badge.plus|note_add|new document
+doc.on.clipboard|content_paste|paste clipboard
+list.bullet.rectangle|list_alt|list
+list.clipboard|assignment|checklist task
+checklist|checklist|checklist todo
+folder.badge.plus|create_new_folder|new folder
+tray.and.arrow.down|move_to_inbox|inbox download
+tray.and.arrow.up|outbox|outbox upload
+server.rack|dns|server
+network|lan|network
+link.circle|link|link
+personalhotspot|wifi_tethering|hotspot
+cellularbars|signal_cellular_alt|cellular signal
+battery.0percent|battery_0_bar|battery empty
+battery.50percent|battery_4_bar|battery half
+bolt.car|electric_car|ev car
+powerplug|power|plug
+fan|mode_fan|fan
+thermometer.snowflake|ac_unit|cold
+lock.shield|security|security
+faceid|face|face id
+touchid|fingerprint|fingerprint touch id
+person.badge.shield.checkmark|verified_user|verified
+megaphone|campaign|announce megaphone
+speaker.wave.3|volume_up|loud volume
+music.mic|mic_external_on|karaoke mic
+guitars|music_note|guitar music
+pianokeys|piano|piano
+radio|radio|radio
+play.circle|play_circle|play
+pause.circle|pause_circle|pause
+play.rectangle|smart_display|video play
+record.circle|radio_button_checked|record
+goforward.15|forward_10|skip forward
+gobackward.15|replay_10|skip back
+repeat.1|repeat_one|repeat one
+captions.bubble|closed_caption|captions subtitles
+pip|picture_in_picture|picture in picture
+square.grid.3x3|apps|grid apps
+rectangle.grid.1x2|view_agenda|rows layout
+rectangle.split.3x1|view_week|columns
+macwindow|web_asset|window
+safari|explore|safari browser
+book.closed|book|book
+magazine|import_contacts|magazine
+pencil.and.ruler|architecture|design tools
+backpack|backpack|school bag
+balloon|celebration|party balloon
+birthday.cake|cake|birthday cake
+wineglass|wine_bar|wine drink
+mug|coffee|mug coffee
+takeoutbag.and.cup.and.straw|takeout_dining|takeout food
+refrigerator|kitchen|fridge kitchen
+washer|local_laundry_service|laundry
+tshirt|checkroom|clothes
+eyeglasses|eyeglasses|glasses
+crown|workspace_premium|premium crown
+star.circle|stars|featured star
+bell.and.waves.left.and.right|notifications_active|ring alert
+envelope.badge|mark_email_unread|unread mail
+phone.arrow.up.right|call_made|outgoing call
+phone.down|call_end|hang up
+video.slash|videocam_off|video off
+text.bubble|sms|text message
+ellipsis.bubble|sms|typing message
 `;
 
 export const SF_SYMBOLS: SfSymbol[] = RAW.trim()

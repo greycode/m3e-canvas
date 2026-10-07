@@ -72,7 +72,7 @@ import { t, useLang } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { usePlatform } from "@/lib/platform";
 import { glyphOf } from "@/lib/sfsymbols";
-import { IOS_ONLY_KINDS } from "@/lib/tokens";
+import { SELF_DRAWN_KINDS } from "@/lib/tokens";
 import { IosBody, takesIosSkin } from "./IosNode";
 import { railSelectedLabelColor } from "@/lib/color";
 
@@ -1880,7 +1880,7 @@ export function M3Node({
     : ripples.list;
 
   /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
-  if (takesIosSkin(drawn) && (platform === "ios" || IOS_ONLY_KINDS.includes(drawn.kind)))
+  if (takesIosSkin(drawn) && (platform === "ios" || SELF_DRAWN_KINDS.includes(drawn.kind)))
     return (
       <div
         data-node={item.id}
@@ -1988,7 +1988,7 @@ export function M3Static({
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
   const measured = isMeasured(item);
-  if (takesIosSkin(item) && (platform === "ios" || IOS_ONLY_KINDS.includes(item.kind)))
+  if (takesIosSkin(item) && (platform === "ios" || SELF_DRAWN_KINDS.includes(item.kind)))
     return (
       <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
         <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />

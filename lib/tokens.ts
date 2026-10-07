@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { CUSTOM_KIND_SPEC, customSizeOf } from "./custom";
 import { IOS_ENTRY_BOUNDS, IOS_KINDS, IOS_KIND_SPEC, IosKind, applyIosDefaults, iosDefaultTabs, iosSizeOf } from "./iosKinds";
 import { FAB_MENU_TABS, KIND_TEXT, Lang, NAV_TABS, SPLIT_MENU_TABS, TAB_LABELS, getLang, t, SELECT_OPTIONS } from "./i18n";
 import { Contrast, isLightColor, schemeFromSeed } from "./color";
@@ -617,7 +618,9 @@ export type Kind =
   | "datePicker"
   | "timePicker"
   /* SwiftUI controls and Swift Charts that only the iOS target offers (lib/iosKinds.ts) */
-  | IosKind;
+  | IosKind
+  /* a part the designer or an AI defined as data (lib/custom.ts) */
+  | "custom";
 
 /** how a carousel arranges its items: M3's four layouts */
 export type CarouselLayout = "multiBrowse" | "uncontained" | "hero" | "fullScreen";
@@ -928,6 +931,7 @@ export type KindSpec = {
 
 export const KIND_SPEC: Record<Kind, KindSpec> = {
   ...IOS_KIND_SPEC,
+  custom: CUSTOM_KIND_SPEC,
   box: {
     label: "Box",
     noun: "ボックス",
@@ -1623,6 +1627,7 @@ export const KIND_ORDER: Kind[] = [
   "linearProgress",
   "circularProgress",
   ...IOS_KINDS,
+  "custom",
 ];
 
 /* ---------- screen data ---------- */
@@ -1674,6 +1679,10 @@ export type Item = {
   /** Progress track thickness in dp (TRACK_MIN..TRACK_MAX); omitted uses the standard 4dp stroke. */
   trackThickness?: number;
   contained?: boolean;
+  /** a custom component's whole definition (kind "custom", lib/custom.ts); every instance carries it */
+  custom?: import("./custom").CustomDef;
+  /** the values this custom component instance passes to its definition's props */
+  props?: Record<string, string>;
   /** free text the author writes about what this part does */
   note?: string;
   /** what `note` said before the AI rewrote it, so the rewrite can be undone */
@@ -1772,9 +1781,11 @@ export type FabKind = (typeof FAB_KINDS)[number];
 export const isFab = (k: Kind): k is FabKind => (FAB_KINDS as readonly string[]).includes(k);
 /** parts the palette does not list on their own: a FAB's other two shapes are reached from its
  *  own panel, where the three sit side by side. A saved sketch may still hold any of them. */
-export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress"];
+export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress", "custom"];
 /** kinds the parts palette offers only while the prompt targets iOS */
 export const IOS_ONLY_KINDS: Kind[] = [...IOS_KINDS];
+/** kinds the canvas draws in their own look on every target: the iOS-only kinds and custom components */
+export const SELF_DRAWN_KINDS: Kind[] = [...IOS_KINDS, "custom"];
 /** how tall an extended FAB is drawn, and what it is made of at that height */
 export const extendedFabHeight = (it: Item) => clamp(Math.round(it.size2 ?? 56), 56, FAB_H_MAX);
 export function extendedFabMetrics(h: number) {
@@ -2534,7 +2545,7 @@ export function sizeOf(it: Item, widths: Record<string, number>) {
     case "navRail":
       return { w: railWidth(it), h: it.size2 ?? s.h };
     default:
-      return iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h };
+      return it.kind === "custom" ? customSizeOf(it) : (iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h });
   }
 }
 

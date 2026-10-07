@@ -2,7 +2,7 @@
 
 import { t, useLang } from "../lib/i18n";
 import type { Item, Palette } from "../lib/tokens";
-import { DESTRUCTIVE, Glyph, Sys, center, glass, oneLine, rowStyle } from "./iosStyle";
+import { DESTRUCTIVE, Glyph, Sys, center, glass, oneLine, rowStyle, tint } from "./iosStyle";
 
 /* The SwiftUI controls only the iOS target offers, drawn the way iOS 26 draws them.
  * Each fills exactly the w×h that sizeOf gives its kind. */
@@ -193,6 +193,148 @@ function EmptyState({ item, s }: Props) {
   );
 }
 
+/** a Link: accent-colored words in a grouped row */
+function Link({ item, p, s }: Props) {
+  return (
+    <div style={rowStyle(s)}>
+      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: p.primary }}>{item.label}</span>
+    </div>
+  );
+}
+
+/** LabeledContent: the label, and the value right-aligned in the secondary color */
+function LabeledContent({ item, s }: Props) {
+  return (
+    <div style={rowStyle(s)}>
+      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.label }}>{item.label}</span>
+      <span style={{ ...oneLine, maxWidth: "50%", fontSize: 17, color: s.secondary }}>{item.supporting}</span>
+    </div>
+  );
+}
+
+/** a SecureField: the placeholder in a grouped row */
+function SecureField({ item, s }: Props) {
+  return (
+    <div style={rowStyle(s)}>
+      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.tertiary }}>{item.label}</span>
+    </div>
+  );
+}
+
+/** a section footer: footnote type under the section above */
+function SectionFooter({ item, s }: Props) {
+  return (
+    <div style={{ position: "absolute", left: 16, right: 16, top: 4, fontSize: 13, lineHeight: 1.35, color: s.secondary, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.label}</div>
+  );
+}
+
+/** a TipView: the symbol, the title and the message on a grouped card, the close button at the corner */
+function Tip({ item, p, s }: Props) {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", gap: 12, padding: "14px 36px 14px 14px", boxSizing: "border-box", borderRadius: 16, background: s.row }}>
+      {item.icon && <Glyph name={item.icon} size={28} color={p.primary} />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ ...oneLine, fontSize: 15, fontWeight: 600, color: s.label }}>{item.label}</span>
+        <span style={{ fontSize: 15, lineHeight: 1.3, color: s.secondary, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.supporting}</span>
+      </div>
+      <span style={{ position: "absolute", top: 10, right: 10 }}>
+        <Glyph name="close" size={16} color={s.tertiary} />
+      </span>
+    </div>
+  );
+}
+
+/** a PhotosPicker in the bordered button style */
+function PhotosPicker({ item, p }: Props) {
+  return (
+    <div style={{ ...center, position: "absolute", inset: 0, gap: 8, borderRadius: 999, background: tint(p.primary, 14) }}>
+      {item.icon && <Glyph name={item.icon} size={20} color={p.primary} />}
+      <span style={{ ...oneLine, fontSize: 17, fontWeight: 500, color: p.primary }}>{item.label}</span>
+    </div>
+  );
+}
+
+/** Sign in with Apple and Apple Pay: the system's black (white when dark) button; the canvas draws no Apple logo */
+function SystemButton({ item, s, dark }: Props) {
+  return (
+    <div style={{ ...center, ...oneLine, position: "absolute", inset: 0, borderRadius: 12, background: s.label, color: dark ? "#000000" : "#FFFFFF", fontSize: 19, fontWeight: 600 }}>{item.label}</div>
+  );
+}
+
+/** a VideoPlayer: 16:9 black, a glass play button and the scrubber */
+function VideoPlayer({ dark }: Props) {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 20, background: "#000000" }}>
+      <div style={{ ...center, position: "absolute", left: "50%", top: "50%", width: 56, height: 56, marginLeft: -28, marginTop: -28, borderRadius: 999, ...glass(true, false) }}>
+        <Glyph name="play_arrow" size={30} color="#FFFFFF" fill />
+      </div>
+      <div style={{ position: "absolute", left: 16, right: 16, bottom: 16, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.35)" }}>
+        <div style={{ width: "30%", height: 4, borderRadius: 2, background: dark ? "#FFFFFF" : "#F2F2F7" }} />
+      </div>
+    </div>
+  );
+}
+
+/** a LazyVGrid of square photos, three across with 2pt gaps */
+function PhotoGrid({ p, s, w, h }: Props) {
+  const cell = (w - 4) / 3;
+  const rows = Math.max(1, Math.floor((h + 2) / (cell + 2)));
+  const hues = [p.primary, "#34C759", "#FF9500", "#5AC8FA", "#FF2D55", "#AF52DE"];
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridAutoRows: cell, gap: 2, overflow: "hidden" }}>
+      {Array.from({ length: rows * 3 }, (_, i) => (
+        <div key={i} style={{ ...center, background: tint(hues[(i * 5) % hues.length], 22) }}>
+          <Glyph name="image" size={22} color={s.tertiary} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** the tab bar's bottom accessory: a glass capsule with artwork, title and the play and next buttons */
+function TabAccessory({ item, p, s, dark }: Props) {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 10, padding: "0 16px 0 10px", borderRadius: 999, ...glass(dark, true) }}>
+      <div style={{ ...center, flex: "0 0 auto", width: 36, height: 36, borderRadius: 8, background: tint(p.primary, 25) }}>{item.icon && <Glyph name={item.icon} size={20} color={p.primary} />}</div>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+        <span style={{ ...oneLine, fontSize: 15, fontWeight: 600, color: s.label }}>{item.label}</span>
+        {item.supporting?.trim() && <span style={{ ...oneLine, fontSize: 13, color: s.secondary }}>{item.supporting}</span>}
+      </div>
+      <Glyph name="play_arrow" size={26} color={s.label} fill />
+      <Glyph name="fast_forward" size={24} color={s.label} fill />
+    </div>
+  );
+}
+
+const SUBSCRIBE: Record<string, [string, string]> = {
+  ja: ["登録する", "購入を復元"],
+  en: ["Subscribe", "Restore Purchases"],
+  zh: ["订阅", "恢复购买"],
+  ko: ["구독하기", "구입 내역 복원"],
+};
+
+/** a SubscriptionStoreView: the marketing title, the plans as a picker, the subscribe button and restore */
+function SubscriptionStore({ item, p, s }: Props) {
+  const lang = useLang();
+  const [subscribe, restore] = SUBSCRIBE[lang] ?? SUBSCRIBE.en;
+  const plans = item.tabs ?? [];
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8, padding: 20, boxSizing: "border-box", borderRadius: 22, background: s.row }}>
+      <span style={{ ...oneLine, textAlign: "center", fontSize: 28, fontWeight: 700, color: s.label }}>{item.label}</span>
+      <span style={{ ...oneLine, textAlign: "center", fontSize: 15, color: s.secondary, marginBottom: 8 }}>{item.supporting}</span>
+      {plans.map((plan, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", height: 52, padding: "0 16px", boxSizing: "border-box", borderRadius: 14, border: `2px solid ${i === 0 ? p.primary : s.separator}`, background: i === 0 ? tint(p.primary, 8) : undefined }}>
+          <span style={{ ...oneLine, flex: 1, fontSize: 17, fontWeight: 600, color: s.label }}>{plan.label}</span>
+          <Glyph name={i === 0 ? "check_circle" : "radio_button_unchecked"} size={22} color={i === 0 ? p.primary : s.tertiary} fill={i === 0} />
+        </div>
+      ))}
+      <div style={{ flex: 1 }} />
+      <div style={{ ...center, height: 50, borderRadius: 999, background: p.primary, color: p.onPrimary, fontSize: 17, fontWeight: 600 }}>{subscribe}</div>
+      <span style={{ textAlign: "center", fontSize: 13, color: p.primary }}>{restore}</span>
+    </div>
+  );
+}
+
 /** one iOS-only control in its box */
 export function IosControl(props: Props) {
   switch (props.item.kind) {
@@ -218,6 +360,29 @@ export function IosControl(props: Props) {
       return <ActionSheet {...props} />;
     case "emptyState":
       return <EmptyState {...props} />;
+    case "link":
+      return <Link {...props} />;
+    case "labeledContent":
+      return <LabeledContent {...props} />;
+    case "secureField":
+      return <SecureField {...props} />;
+    case "sectionFooter":
+      return <SectionFooter {...props} />;
+    case "tip":
+      return <Tip {...props} />;
+    case "photosPicker":
+      return <PhotosPicker {...props} />;
+    case "signInWithApple":
+    case "applePayButton":
+      return <SystemButton {...props} />;
+    case "videoPlayer":
+      return <VideoPlayer {...props} />;
+    case "photoGrid":
+      return <PhotoGrid {...props} />;
+    case "tabAccessory":
+      return <TabAccessory {...props} />;
+    case "subscriptionStore":
+      return <SubscriptionStore {...props} />;
     default:
       return null;
   }

@@ -4,6 +4,7 @@ import { IOS_CHART_KINDS, IOS_KINDS, isIosKind } from "../lib/iosKinds";
 import { Item, Kind, NAV_BAR_H, Palette, Radii, STATUS_BAR_H, isMeasured, isScrollableTabs } from "../lib/tokens";
 import { IosChart } from "./IosCharts";
 import { IosControl } from "./IosControls";
+import { CustomBody } from "./CustomNode";
 import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./iosStyle";
 
 /* When the prompt targets iOS, the canvas draws these parts the way iOS 26 draws them.
@@ -15,7 +16,8 @@ import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./i
  * may not ship on the web. */
 
 /** kinds the canvas can draw in an iOS 26 skin */
-export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS];
+/** kinds the canvas draws here: the seven with an iOS skin, the iOS-only kinds and custom components */
+export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS, "custom"];
 
 /** the part has an iOS skin and its size does not depend on how it is drawn */
 export const takesIosSkin = (item: Item) => IOS_SKIN_KINDS.includes(item.kind) && !isMeasured(item);
@@ -211,6 +213,8 @@ export function IosBody({ item, p, w, h, dark, radii }: { item: Item; p: Palette
         return <Slider item={item} p={p} s={s} w={w} h={h} />;
       case "toolbar":
         return <Toolbar item={item} p={p} s={s} h={h} dark={dark} />;
+      case "custom":
+        return <CustomBody item={item} p={p} w={w} h={h} dark={dark} />;
       default:
         if (!isIosKind(item.kind)) return null;
         return IOS_CHART_KINDS.includes(item.kind) ? <IosChart item={item} p={p} s={s} w={w} h={h} /> : <IosControl item={item} p={p} s={s} w={w} h={h} dark={dark} />;

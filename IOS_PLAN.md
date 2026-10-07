@@ -1,17 +1,18 @@
 # m3e-canvas 支持 iOS 26–27（SwiftUI）定制方案
 
-2026年10月7日 · @Someone
+2026年10月7日 · @Sebrina Setter
 
 ## 摘要
 
 结论：在已有的「目标平台」开关上新增 `"ios"`，把 iOS 文本全部放进新文件 `lib/prompt-ios.ts`，`buildPrompt` 只在 `platform === "ios"` 时换用这套文本。阶段 1 已在源码 `039ec31` 上实现：`npm run typecheck` 通过，24 个测试文件全部通过，Android 和 Web 的提示词与改动前逐字一致（快照测试验证）。
 
-| 阶段                          | 内容                                                         | 状态                                                         |
-| ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| 1 提示词层（必做）            | 新增 iOS 平台；36 种部件的 SwiftUI 映射；Liquid Glass 规则；配色、字体、动效、单位、图标映射。改 11 个文件，新增 502 行，删除 19 行 | 已完成，已验证（typecheck + vitest）。补丁可直接 `git apply` |
-| 1b 日语和韩语翻译（可选）     | ja、ko 的长文本目前回退到英文，翻译成本语言                  | 未开始                                                       |
-| 2 画布外观层（可选）          | 画布和预览用 iOS 外观绘制 7 种部件，尺寸和布局算法不变       | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 03-ios-canvas-skin.patch |
-| 3 iOS 控件、图表与 SF Symbols | 新增 15 种 iOS 专用部件（11 种 SwiftUI 控件、4 种 Swift Charts 图表）；图标支持 SF Symbols；public/agent.md 增加 iOS 目标说明 | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 04-ios-controls-charts-sfsymbols.patch |
+| 阶段                              | 内容                                                         | 状态                                                         |
+| --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| 1 提示词层（必做）                | 新增 iOS 平台；36 种部件的 SwiftUI 映射；Liquid Glass 规则；配色、字体、动效、单位、图标映射。改 11 个文件，新增 502 行，删除 19 行 | 已完成，已验证（typecheck + vitest）。补丁可直接 `git apply` |
+| 1b 日语和韩语翻译（可选）         | ja、ko 的长文本目前回退到英文，翻译成本语言                  | 未开始                                                       |
+| 2 画布外观层（可选）              | 画布和预览用 iOS 外观绘制 7 种部件，尺寸和布局算法不变       | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 03-ios-canvas-skin.patch |
+| 3 iOS 控件、图表与 SF Symbols     | 新增 15 种 iOS 专用部件（11 种 SwiftUI 控件、4 种 Swift Charts 图表）；图标支持 SF Symbols；public/agent.md 增加 iOS 目标说明 | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 04-ios-controls-charts-sfsymbols.patch |
+| 4 更多 iOS 控件与图表、自定义组件 | 新增 15 种 iOS 部件（12 种控件、3 种图表）；SF Symbols 目录扩充到 441 个；新增自定义组件（JSON 定义，画布绘制，提示词中只描述一次并复用）；public/agent.md 补充说明 | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 05-ios-more-controls-custom-components.patch |
 
 交付物共 3 个文件，和本文档一起交给 Sonnet：
 
@@ -28,6 +29,12 @@
 
 - `04-ios-controls-charts-sfsymbols.patch`：阶段 3 的全部改动，在阶段 2 的提交之上应用。
 - `ios-controls-charts-preview.png`：4 个屏幕的演示设计，用到全部 15 种新部件和 SF Symbols 图标，浅色和深色各一张，供阶段 3 第 6 步人工核对。
+
+阶段 4 另有 3 个文件：
+
+- `05-ios-more-controls-custom-components.patch`：阶段 4 的全部改动，在阶段 3 的提交之上应用。
+- `ios-phase4-preview.png`：4 个屏幕的演示设计，用到 15 种新部件和 4 个自定义组件，浅色和深色各一张。
+- `sample-ios-prompt-custom-zh.md`：这个演示设计生成的中文提示词，可以看到「自定义组件」一节的写法。
 
 未确认的部分：提示词中的 SwiftUI API 名称来自 Apple 文档、WWDC25 和 WWDC26 资料，没有在 Xcode 中编译过。第 7 节给出用 Xcode 27 做端到端验收的方法。
 
@@ -151,6 +158,59 @@ iOS 26 的 Liquid Glass API（`.glassEffect`、`GlassEffectContainer`、`.button
 | `pieChart`      | `SectorMark(innerRadius: .ratio(0.618), angularInset: 1.5)`  | 标题、扇区         |
 
 SF Symbols：图标值可以写成 `sf:<名称>`，例如 `sf:magnifyingglass`、`sf:heart.fill`。iOS 提示词直接输出 SF Symbol 名称，不再经过「Material → SF Symbol」对照；Android 和 Web 提示词把它换回对应的 Material 名称。画布用相近的 Material 字形代替显示，因为 SF Symbols 的许可不允许在网页上显示。
+
+### 新增部件（阶段 4）
+
+| 部件（Kind）        | SwiftUI 实现                                  | 画布上可编辑的内容 |
+| ------------------- | --------------------------------------------- | ------------------ |
+| `link`              | `Link(title, destination:)`                   | 文字               |
+| `labeledContent`    | `LabeledContent(label, value:)`               | 标签、值           |
+| `secureField`       | `SecureField` + `.textContentType(.password)` | 占位文字           |
+| `sectionFooter`     | `Section { … } footer: { Text(…) }`           | 文字               |
+| `tip`               | TipKit `TipView(tip)`                         | 图标、标题、内容   |
+| `photosPicker`      | PhotosUI `PhotosPicker`                       | 图标、文字         |
+| `signInWithApple`   | `SignInWithAppleButton(.signIn)`              | 文字               |
+| `applePayButton`    | PassKit `PayWithApplePayButton(.buy)`         | 文字               |
+| `videoPlayer`       | AVKit `VideoPlayer`，16:9                     | 宽度               |
+| `photoGrid`         | `LazyVGrid`，每行 3 张                        | 宽度、高度         |
+| `tabAccessory`      | iOS 26 `.tabViewBottomAccessory`              | 图标、标题、副标题 |
+| `subscriptionStore` | StoreKit `SubscriptionStoreView`              | 标题、副标题、方案 |
+| `scatterChart`      | `PointMark` + `.symbol(by:)`                  | 标题、副标题、系列 |
+| `stackedBarChart`   | `BarMark` + `.foregroundStyle(by:)`           | 标题、副标题、分类 |
+| `heatmapChart`      | `RectangleMark`                               | 标题、副标题、列   |
+
+### 自定义组件（阶段 4）
+
+内置部件覆盖不到的控件，用自定义组件表示。自定义组件是 `kind` 为 `custom` 的部件，定义写在部件自己的 `custom` 字段中。定义是一棵声明式 JSON 布局树，不是代码。
+
+| 字段          | 含义                                                         |
+| ------------- | ------------------------------------------------------------ |
+| `name`        | UpperCamelCase 名称，也是代码中的类型名，例如 `struct RatingStars: View` |
+| `description` | 组件做什么                                                   |
+| `props`       | 组件接收的属性及默认值；实例自己的 `props` 覆盖默认值        |
+| `w`、`h`      | 默认尺寸；实例的 `size`、`size2` 优先                        |
+| `layout`      | 画布绘制用的布局树：`vstack`、`hstack`、`zstack`、`text`、`icon`、`shape`、`image`、`spacer`、`progress`、`repeat`；任何节点可加 `if` 条件；文字、图标名等可写 `{{属性名}}` 模板 |
+| `swiftui`     | 可选的参考实现，原样写进 iOS 提示词                          |
+
+- 画布：按 `layout` 绘制。颜色写角色名（`primary`、`label`、`secondary`、`fill`、`row`、`orange` 等），随目标平台和深色模式变化。
+- 提示词：新增「自定义组件」一节。每个组件只描述一次，内容为说明、属性及默认值、由 `layout` 生成的草图（iOS 为 SwiftUI 骨架，Android 和 Web 为文字大纲），以及可选的参考实现。屏幕结构中的各实例写成「自定义组件 名称（属性值）」，要求代码模型实现一次、到处复用。
+- 安全：分享链接不可信，所以定义中没有可执行内容。所有字符串都按文字显示；图片只允许 https；布局最多 8 层、200 个节点，每个栈最多 40 个子节点。任何一项不符合，整个文件或链接都会被拒绝。
+- AI 草图：`public/agent.md` 新增「Custom components」一节，给出字段、节点类型、颜色角色、模板和条件的写法，以及完整示例。
+- 编辑器：属性面板显示组件名称和说明，可以修改文字和各属性值。复制部件即可复用。
+
+### 覆盖范围说明
+
+阶段 4 之后，iOS 目标有 30 种专用部件，另有 7 种换成 iOS 外观的部件，其余 Material 部件都有 SwiftUI 映射。这仍然不是 iOS 的全部控件。下列控件没有做成专用部件，可以用自定义组件表示，并把参考实现写在 `swiftui` 字段中：
+
+- WebKit 的 `WebView`
+- MapKit 的 Look Around
+- `ShareLink`
+- `MultiDatePicker`
+- PassKit 的「添加到钱包」按钮
+- HealthKit 的活动圆环
+- Swift Charts 的 `RuleMark` 和 `Chart3D`
+
+SF Symbols 目录内置 441 个常用符号；完整的 SF Symbols 有数千个，目录外的名称可以在选择器中直接输入。
 
 ## 改造架构
 
@@ -863,6 +923,91 @@ describe("iOS canvas skin", () => {
 
 说明：第 6 步的第 1、2 项和提示词转换已由截图和测试验证。第 3、5 项（图标选择器和条目编辑）我只做了代码检查和类型检查，没有在浏览器中操作验证。
 
+### 阶段 4：更多 iOS 控件和图表、自定义组件
+
+状态：已完成，已验证。补丁 `05-ios-more-controls-custom-components.patch` 基于阶段 3 的提交：`npm run typecheck` 通过，28 个测试文件通过，`prompt-baseline` 的 8 个快照没有变化。在浏览器中用 4 个屏幕的演示设计核对了 15 种新部件和 4 个自定义组件的浅色、深色外观，见 `ios-phase4-preview.png`。
+
+本阶段完成 4 项改动：
+
+- 新增 15 种 iOS 部件：12 种控件和 3 种图表，见第 3 节「新增部件（阶段 4）」。
+- SF Symbols 目录扩充到 441 个。
+- 新增自定义组件，见第 3 节「自定义组件（阶段 4）」。
+- `public/agent.md` 补充 15 种部件，并新增「Custom components」一节。
+
+| 文件                                                     | 改动                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| `lib/custom.ts`                                          | 新建：自定义组件的类型、校验、模板与条件、尺寸、SwiftUI 草图和文字大纲、提示词文本 |
+| `components/CustomNode.tsx`                              | 新建：按定义绘制自定义组件                                   |
+| `components/CustomNode.test.tsx`                         | 新建：自定义组件测试                                         |
+| `lib/iosKinds.ts`                                        | 15 种部件的规格、4 种语言的名称和默认内容、条目上限、尺寸    |
+| `lib/sfsymbols.ts`                                       | 目录扩充到 441 个符号                                        |
+| `components/IosControls.tsx`、`components/IosCharts.tsx` | 12 种控件和 3 种图表的绘制；图表模块重写，7 种图表共用网格和图例 |
+| `components/IosNode.tsx`、`components/M3Node.tsx`        | 自定义组件在任何目标下都按自身定义绘制                       |
+| `lib/tokens.ts`、`lib/i18n.ts`、`lib/project.ts`         | 注册 `custom` 部件；部件新增 `custom`、`props` 字段；文件和链接校验 |
+| `lib/prompt.ts`、`lib/prompt-ios.ts`                     | 新部件的描述和 SwiftUI 说明；「自定义组件」一节              |
+| `components/PartInspector.tsx`                           | 自定义组件的名称、说明、文字和属性编辑                       |
+| `public/agent.md`                                        | 新部件和自定义组件说明                                       |
+
+有意保留的差异：
+
+- 部件面板不提供空白的自定义组件。定义来自项目 JSON 或 AI 草图；要复用时，复制已有部件。
+- 属性面板只能改自定义组件的文字和属性值，不能改布局树；改布局需要改 JSON。
+- 参考实现（`swiftui`）只写进 iOS 提示词；Android 和 Web 提示词只有文字大纲。
+- 画布不画 Apple 标志，Sign in with Apple 和 Apple Pay 按钮只画文字。
+
+前置条件：阶段 3 已提交，测试全部通过。
+
+1. 新建分支：`git checkout -b feat/ios-custom-components`。
+2. 检查补丁：`git apply --check 05-ios-more-controls-custom-components.patch`。如果检查失败，停止执行并报告完整输出。这个补丁改动 16 个文件，不提供手工应用步骤。
+3. 应用补丁：`git apply 05-ios-more-controls-custom-components.patch`。
+4. 运行 `npm run typecheck`。预期结果：退出码 0。
+5. 运行 `npm test`。预期结果：28 个测试文件全部通过，`prompt-baseline` 的 8 个快照没有变化。
+
+警告：如果 `prompt-baseline` 测试失败，禁止用 `-u` 更新快照。撤销引起差异的修改，再运行第 5 步。
+
+1. 在仓库根目录新建 `custom-demo.json`，内容为本节末尾的代码，原样复制。
+2. 运行 `npm run dev`。在另一个终端运行下面的命令，在浏览器中打开它输出的地址：
+
+```bash
+node -e "console.log('http://localhost:3000/#doc=' + encodeURIComponent(require('fs').readFileSync('custom-demo.json', 'utf8')))"
+```
+
+1. 手动检查下面 4 项：
+   - 画布上有两行 RatingStars：Story 有 4 颗实心星，Visuals 有 2 颗。
+   - 选中 Visuals，右侧属性面板出现「RatingStars」一节；把 rating 改成 5，画布上变成 5 颗实心星。
+   - 提示词中「自定义组件」一节只出现一次，RatingStars 只描述一次；屏幕结构中两个实例分别带各自的 rating 值。
+   - 目标选「iOS」后，「iOS」分类比阶段 3 多 12 个部件，「图表」分类多 3 个；拖入的新部件外观与 `ios-phase4-preview.png` 一致。
+2. 删除 `custom-demo.json`，然后提交：`git add -A && git commit -m "feat: more iOS controls and charts, custom components"`。
+
+说明：第 8 步的第 1、3、4 项已由截图和测试验证；第 2 项（在属性面板中修改属性值）我只做了代码检查和类型检查，没有在浏览器中操作验证。
+
+`custom-demo.json`（第 6 步使用）：
+
+```json
+{
+  "groups": [
+    { "id": "g1", "x": 16, "y": 120, "axis": "x", "items": [
+      { "id": "a", "kind": "custom", "label": "Story", "icon": null, "variant": "filled", "size": 380, "size2": 40, "props": { "rating": "4" },
+        "custom": { "name": "RatingStars", "description": "A read-only 0–5 star rating with its label.", "props": { "rating": "3" }, "w": 380, "h": 40,
+          "layout": { "type": "hstack", "spacing": 4, "children": [
+            { "type": "text", "text": "{{label}}", "size": 17, "weight": "medium" }, { "type": "spacer" },
+            { "type": "repeat", "count": 5, "child": { "type": "zstack", "children": [
+              { "type": "icon", "name": "sf:star.fill", "size": 20, "color": "orange", "if": "{{i}} <= {{rating}}" },
+              { "type": "icon", "name": "sf:star", "size": 20, "color": "tertiary", "if": "{{i}} > {{rating}}" } ] } } ] } } } ] },
+    { "id": "g2", "x": 16, "y": 176, "axis": "x", "items": [
+      { "id": "b", "kind": "custom", "label": "Visuals", "icon": null, "variant": "filled", "size": 380, "size2": 40, "props": { "rating": "2" },
+        "custom": { "name": "RatingStars", "description": "A read-only 0–5 star rating with its label.", "props": { "rating": "3" }, "w": 380, "h": 40,
+          "layout": { "type": "hstack", "spacing": 4, "children": [
+            { "type": "text", "text": "{{label}}", "size": 17, "weight": "medium" }, { "type": "spacer" },
+            { "type": "repeat", "count": 5, "child": { "type": "zstack", "children": [
+              { "type": "icon", "name": "sf:star.fill", "size": 20, "color": "orange", "if": "{{i}} <= {{rating}}" },
+              { "type": "icon", "name": "sf:star", "size": 20, "color": "tertiary", "if": "{{i}} > {{rating}}" } ] } } ] } } } ] }
+  ],
+  "frames": [{ "id": "f", "name": "Home", "x": 0, "y": 0 }],
+  "paletteKey": "purple", "frame": "phone", "platform": "ios", "title": "Demo", "brief": ""
+}
+```
+
 ## iOS 提示词全文：lib/prompt-ios.ts
 
 `lib/prompt-ios.ts` 存放 iOS 提示词的全部文本，共 399 行。以后要调整 iOS 的写法，只改这个文件，`lib/prompt.ts` 不用再动。本节代码与 `02-ios-prompt.patch` 中的同名文件相同；两者不一致时，以补丁为准。
@@ -1089,6 +1234,16 @@ Sonnet 的工作满足以下全部条件时，阶段 1 算完成：
 
 阶段 3 新增 2 个测试文件。`lib/sfsymbols.test.ts` 检查目录格式、替代字形、提示词中的名称转换和搜索。`lib/iosKinds.test.ts` 检查 5 件事：新部件的注册和面板分类；4 种语言下的默认内容和条目上限；菜单和操作表的高度随条目增加；提示词中的描述和 SwiftUI 说明；`sf:` 名称在 iOS 提示词中保留为 SF Symbol 名称、在 Android 提示词中换成 Material 名称。`lib/prompt-baseline.test.ts` 改为固定使用原有的 36 种部件，所以新增部件不会改变基线快照。
 
+阶段 4 新增 `components/CustomNode.test.tsx`，检查 5 件事：
+
+- 合法定义可以通过；危险或超限的定义被拒绝，包括未知节点类型、非 https 图片、`javascript:` 地址、非法颜色、超过 8 层或 200 个节点。
+- 模板、条件和重复次数上限按预期工作。
+- 画布按实例的属性画出对应数量的星星。
+- 提示词中同一组件只描述一次，各实例带各自的属性值；iOS 生成 SwiftUI 草图，Android 生成文字大纲。
+- 项目文件和分享链接接受合法定义，拒绝损坏的定义。
+
+新增的 15 种 iOS 部件由现有的 `lib/iosKinds.test.ts` 和 `lib/prompt-ios.test.ts` 自动覆盖。
+
 `lib/prompt-ios.test.ts` 全文（手工应用 M2 时使用）：
 
 ```ts
@@ -1223,6 +1378,11 @@ Sonnet 只需按第 5 节执行命令和替换文本，不需要做设计判断�
 - 新增一个 iOS 部件：在 `lib/iosKinds.ts` 的 `IOS_KINDS`、`IOS_KIND_SPEC`、`IOS_KIND_TEXT`（4 种语言）中各加一项；在 `lib/prompt-ios.ts` 的 `STYLE_NOTES_IOS`（`en`、`zh`）和 `IOS_ITEM_TEXT`（4 种语言）中各加一项；在 `components/IosControls.tsx` 或 `components/IosCharts.tsx` 中加绘制。前 5 项漏掉任何一项，typecheck 或测试会报错；绘制要在浏览器中检查。
 - 增加一个 SF Symbol：在 `lib/sfsymbols.ts` 的 `RAW` 中加一行 `名称|Material 替代字形|搜索词`。测试会检查名称格式和重复。
 - 根目录的 `AGENTS.md` 由 `next dev` 自动生成，本方案没有改它。AI 草图功能读取的是 `public/agent.md`。
+
+阶段 4 之后的维护：
+
+- 新增一个自定义组件不需要改代码：在项目 JSON 或 AI 草图中写 `custom` 定义即可。
+- 扩展自定义组件的节点类型：在 `lib/custom.ts` 中同时修改类型 `CustomNode`、校验函数 `validNode` 和两个草图生成函数（`swiftLines`、`outlineLines`）；在 `components/CustomNode.tsx` 中加绘制；更新 `public/agent.md` 的节点说明。校验必须保持两条底线：定义中没有可执行内容，图片只允许 https。
 
 第 2 段（部件样式说明：英文）：
 
