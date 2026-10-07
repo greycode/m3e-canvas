@@ -1,0 +1,35 @@
+/**
+ * Step 0 of the iOS plan: freezes the Android and web prompts before any iOS change,
+ * so the iOS work can prove it left them byte-for-byte unchanged.
+ * Create it first, run `npx vitest run lib/prompt-baseline.test.ts -u` once, then commit.
+ */
+import { afterEach, describe, expect, it } from "vitest";
+
+import { Lang, setGlobalLang } from "./i18n";
+import { buildPrompt } from "./prompt";
+import { Doc, Item, KIND_ORDER, makeItem } from "./tokens";
+
+const LANGS: Lang[] = ["ja", "en", "zh", "ko"];
+
+/* one part of every kind, each in its own group, stacked down one phone screen */
+function everyKind(platform: "android" | "web"): Doc {
+  const items: Item[] = KIND_ORDER.map((kind, i) => ({ ...makeItem(kind), id: `p${i}` }));
+  return {
+    groups: items.map((it, i) => ({ id: `g${i}`, x: 16, y: 24 + i * 24, axis: "x" as const, items: [it] })),
+    frames: [{ id: "f-home", name: "Home", x: 0, y: 0 }],
+    paletteKey: "purple",
+    frame: "phone",
+    platform,
+    title: "Notes",
+    brief: "",
+  };
+}
+
+describe("prompt baseline (android / web must not change)", () => {
+  afterEach(() => setGlobalLang("ja"));
+  for (const platform of ["android", "web"] as const)
+    it.each(LANGS)(`${platform} prompt in %s`, (lang) => {
+      setGlobalLang(lang);
+      expect(buildPrompt(everyKind(platform), {}, undefined, lang)).toMatchSnapshot();
+    });
+});
