@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Palette } from "@/lib/tokens";
 import { t, useLang } from "@/lib/i18n";
+import { usePlatform } from "@/lib/platform";
+import { SfSymbolGrid } from "./SfSymbolPicker";
 
 type IconMeta = { n: string; p: number; t: string };
 
@@ -35,6 +37,9 @@ export function IconPicker({
   extras?: { icon: string; title: string }[];
 }) {
   const lang = useLang();
+  /* on the iOS target the picker opens on SF Symbols; Material Symbols stay one tap away */
+  const ios = usePlatform() === "ios";
+  const [sfMode, setSfMode] = useState(true);
   const [icons, setIcons] = useState<IconMeta[] | null>(cache);
   const [q, setQ] = useState("");
   const [fontReady, setFontReady] = useState(false);
@@ -147,7 +152,7 @@ export function IconPicker({
 
   const loading = !icons || !fontReady;
 
-  return (
+  const materialPicker = (
     <div>
       {/* Hidden probes need intrinsic text widths to distinguish missing glyphs. */}
       <div
@@ -349,6 +354,23 @@ export function IconPicker({
         }}
       />
       </div>
+    </div>
+  );
+  if (!ios) return materialPicker;
+  const pill = (on: boolean): React.CSSProperties => ({ flex: 1, height: 32, border: "none", borderRadius: 999, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", background: on ? palette.primary : "transparent", color: on ? palette.onPrimary : palette.onSurfaceVariant });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div role="group" style={{ display: "flex", gap: 4, padding: 4, borderRadius: 999, background: palette.surfaceContainerLow }}>
+        <button aria-pressed={sfMode} onClick={() => setSfMode(true)} style={pill(sfMode)}>
+          SF Symbols
+        </button>
+        <button aria-pressed={!sfMode} onClick={() => setSfMode(false)} style={pill(!sfMode)}>
+          Material Symbols
+        </button>
+      </div>
+      {sfMode && <SfSymbolGrid value={value} onChange={onChange} palette={palette} />}
+      {/* the Material grid stays mounted so its glyph measuring keeps working; it is hidden while SF Symbols show */}
+      <div style={sfMode ? { position: "absolute", visibility: "hidden", pointerEvents: "none", height: 0, overflow: "hidden" } : undefined}>{materialPicker}</div>
     </div>
   );
 }

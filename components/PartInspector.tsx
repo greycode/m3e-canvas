@@ -46,6 +46,7 @@ import {
   timeLayoutOf,
   topBarHeightOf,
 } from "@/lib/tokens";
+import { IOS_ONLY_KINDS } from "@/lib/tokens";
 import { Field, ImageRow, NamedSizes, PanelShell, RUN_CELL, Section, Segmented, Slider, Toggle } from "./ui";
 import { CardStage } from "./CardStage";
 import { arcPath, wavePath } from "./Loading";
@@ -509,6 +510,27 @@ export function PartInspector({
         </Section>
       )}
 
+      {/* ---------- iOS-only parts: their words and their entries ---------- */}
+      {IOS_ONLY_KINDS.includes(kind) && (spec.hasLabel || spec.hasIcon) && (
+        <Section id="part-text" icon="short_text" title={t("text", lang)} p={p}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {spec.hasIcon ? (
+              <IconRow slots={iconSlots} onPick={(key, icon) => onChange(setIconSlot(item, key, icon))} p={p}>
+                <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
+              </IconRow>
+            ) : (
+              spec.hasLabel && <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
+            )}
+            {spec.hasSupporting && <Field value={item.supporting ?? ""} onChange={(supporting) => onChange({ supporting })} placeholder={t("supporting", lang)} p={p} multiline rows={2} grow maxHeight={140} />}
+          </div>
+        </Section>
+      )}
+      {IOS_ONLY_KINDS.includes(kind) && spec.hasTabs && (
+        <Section id="part-entries" icon="list" title={t("options", lang)} p={p}>
+          <EntryList item={item} onChange={onChange} p={p} icons={kind === "menu"} selectable={kind === "wheelPicker" || kind === "pageControl"} />
+        </Section>
+      )}
+
       {/* ---------- entries ---------- */}
       {(kind === "bottomNav" || kind === "navRail" || kind === "tabs" || kind === "select") && (
         <Section id="part-entries" icon={kind === "select" ? "list" : "view_column"} title={t(kind === "select" ? "options" : "tabs", lang)} p={p}>
@@ -650,7 +672,7 @@ export function PartInspector({
           <ProgressValue item={item} onChange={onChange} p={p} />
         </Section>
       )}
-      {kind === "slider" && (
+      {(kind === "slider" || kind === "gauge") && (
         <Section id="part-state" icon="tune" title={t("state", lang)} p={p}>
           <Slider icon="percent" title={t("progressState", lang)} value={item.value ?? SLIDER_DEFAULT_VALUE} min={0} max={100} step={1} onChange={(value) => onChange({ value })} p={p} unit="%" />
         </Section>

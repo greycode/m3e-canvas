@@ -6,11 +6,12 @@
 
 结论：在已有的「目标平台」开关上新增 `"ios"`，把 iOS 文本全部放进新文件 `lib/prompt-ios.ts`，`buildPrompt` 只在 `platform === "ios"` 时换用这套文本。阶段 1 已在源码 `039ec31` 上实现：`npm run typecheck` 通过，24 个测试文件全部通过，Android 和 Web 的提示词与改动前逐字一致（快照测试验证）。
 
-| 阶段                      | 内容                                                         | 状态                                                         |
-| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| 1 提示词层（必做）        | 新增 iOS 平台；36 种部件的 SwiftUI 映射；Liquid Glass 规则；配色、字体、动效、单位、图标映射。改 11 个文件，新增 502 行，删除 19 行 | 已完成，已验证（typecheck + vitest）。补丁可直接 `git apply` |
-| 1b 日语和韩语翻译（可选） | ja、ko 的长文本目前回退到英文，翻译成本语言                  | 未开始                                                       |
-| 2 画布外观层（可选）      | 画布和预览用 iOS 外观绘制 7 种部件，尺寸和布局算法不变       | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 03-ios-canvas-skin.patch |
+| 阶段                          | 内容                                                         | 状态                                                         |
+| ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| 1 提示词层（必做）            | 新增 iOS 平台；36 种部件的 SwiftUI 映射；Liquid Glass 规则；配色、字体、动效、单位、图标映射。改 11 个文件，新增 502 行，删除 19 行 | 已完成，已验证（typecheck + vitest）。补丁可直接 `git apply` |
+| 1b 日语和韩语翻译（可选）     | ja、ko 的长文本目前回退到英文，翻译成本语言                  | 未开始                                                       |
+| 2 画布外观层（可选）          | 画布和预览用 iOS 外观绘制 7 种部件，尺寸和布局算法不变       | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 03-ios-canvas-skin.patch |
+| 3 iOS 控件、图表与 SF Symbols | 新增 15 种 iOS 专用部件（11 种 SwiftUI 控件、4 种 Swift Charts 图表）；图标支持 SF Symbols；public/agent.md 增加 iOS 目标说明 | 已完成，已验证（typecheck、vitest、浏览器截图）。补丁为 04-ios-controls-charts-sfsymbols.patch |
 
 交付物共 3 个文件，和本文档一起交给 Sonnet：
 
@@ -22,6 +23,11 @@
 
 - `03-ios-canvas-skin.patch`：阶段 2 的全部改动，在阶段 1 的提交之上应用。
 - `ios-canvas-skin-preview.png`：同一个设计在 Android、iOS 浅色、iOS 深色下的画布截图，供阶段 2 第 6 步人工核对。
+
+阶段 3 另有 2 个文件：
+
+- `04-ios-controls-charts-sfsymbols.patch`：阶段 3 的全部改动，在阶段 2 的提交之上应用。
+- `ios-controls-charts-preview.png`：4 个屏幕的演示设计，用到全部 15 种新部件和 SF Symbols 图标，浅色和深色各一张，供阶段 3 第 6 步人工核对。
 
 未确认的部分：提示词中的 SwiftUI API 名称来自 Apple 文档、WWDC25 和 WWDC26 资料，没有在 Xcode 中编译过。第 7 节给出用 Xcode 27 做端到端验收的方法。
 
@@ -121,6 +127,30 @@ iOS 26 的 Liquid Glass API（`.glassEffect`、`GlassEffectContainer`、`.button
 | 单位     | dp、sp                                                | 整段替换为 pt                                                |
 | 图标     | Material Symbols 名称                                 | 附一行「Material → SF Symbol」对照，内置 154 个常用图标，其余让模型选含义最接近的 SF Symbol |
 | 动态配色 | 壁纸取色                                              | 说明 iOS 没有壁纸取色，下方颜色即应用配色                    |
+
+### 新增部件（阶段 3）
+
+下面 15 种部件只在 iOS 目标下提供。它们没有 Material 对应物，所以在任何目标下画布都用 iOS 外观绘制；提示词按第 6 节同样的方式给出 SwiftUI 写法。
+
+| 部件（Kind）    | SwiftUI 实现                                                 | 画布上可编辑的内容 |
+| --------------- | ------------------------------------------------------------ | ------------------ |
+| `sectionHeader` | `Section { … } header: { Text(title) }`                      | 标题               |
+| `stepper`       | `Stepper("标签: 值", value:, in:)`                           | 标签               |
+| `wheelPicker`   | `Picker` + `.pickerStyle(.wheel)`                            | 标签、选项、选中项 |
+| `colorPicker`   | `ColorPicker(label, selection:, supportsOpacity: false)`     | 标签               |
+| `disclosure`    | `DisclosureGroup(label, isExpanded:)`                        | 标签、展开后的内容 |
+| `textEditor`    | `TextField(axis: .vertical)` + `.lineLimit(5, reservesSpace: true)` | 占位文字           |
+| `pageControl`   | `TabView` + `.tabViewStyle(.page)`                           | 页面、当前页       |
+| `gauge`         | `Gauge` + `.gaugeStyle(.accessoryCircular)`                  | 标签、数值         |
+| `menu`          | `Menu { Button(item, systemImage:) }`，Liquid Glass 菜单     | 标题、菜单项和图标 |
+| `actionSheet`   | `.confirmationDialog(…, titleVisibility: .visible)`          | 标题、说明、操作   |
+| `emptyState`    | `ContentUnavailableView(title, systemImage:, description:)`  | 图标、标题、说明   |
+| `barChart`      | Swift Charts `BarMark`                                       | 标题、副标题、分类 |
+| `lineChart`     | `LineMark` + `PointMark`，`.catmullRom` 插值                 | 标题、副标题、分类 |
+| `areaChart`     | `AreaMark`（渐变填充）+ `LineMark`                           | 标题、副标题、分类 |
+| `pieChart`      | `SectorMark(innerRadius: .ratio(0.618), angularInset: 1.5)`  | 标题、扇区         |
+
+SF Symbols：图标值可以写成 `sf:<名称>`，例如 `sf:magnifyingglass`、`sf:heart.fill`。iOS 提示词直接输出 SF Symbol 名称，不再经过「Material → SF Symbol」对照；Android 和 Web 提示词把它换回对应的 Material 名称。画布用相近的 Material 字形代替显示，因为 SF Symbols 的许可不允许在网页上显示。
 
 ## 改造架构
 
@@ -781,6 +811,58 @@ describe("iOS canvas skin", () => {
 });
 ```
 
+### 阶段 3：新增 iOS 控件、图表和 SF Symbols
+
+状态：已完成，已验证。补丁 `04-ios-controls-charts-sfsymbols.patch` 基于阶段 2 的提交：`npm run typecheck` 通过，27 个测试文件通过，`prompt-baseline` 的 8 个快照没有变化（原有 36 种部件的 Android 和 Web 提示词逐字不变）。在浏览器中用 4 个屏幕的演示设计核对了 15 种新部件的浅色和深色外观，见 `ios-controls-charts-preview.png`。
+
+本阶段完成 3 项改动：
+
+- 新增 15 种 iOS 专用部件：11 种 SwiftUI 控件和 4 种 Swift Charts 图表（见第 3 节「新增部件」）。部件面板新增「iOS」和「图表」两个分类，只在目标平台为 iOS 时显示。
+- 图标支持 SF Symbols。图标值写成 `sf:<名称>`。图标选择器在 iOS 目标下默认打开 SF Symbols 页，内置 200 多个常用符号，也可以直接输入目录外的名称；Material Symbols 页仍可切换使用。
+- `public/agent.md` 新增「The iOS target」一节，说明 `sf:` 图标写法和 15 种新部件的字段，供 AI 草图功能使用。
+
+| 文件                                                         | 改动                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `lib/iosKinds.ts`                                            | 新建：15 种部件的规格、4 种语言的名称和默认内容、条目上限、尺寸 |
+| `lib/sfsymbols.ts`                                           | 新建：SF Symbols 目录、Material 替代字形、提示词中的名称转换 |
+| `components/IosControls.tsx`、`components/IosCharts.tsx`     | 新建：11 种控件和 4 种图表的绘制                             |
+| `components/iosStyle.tsx`                                    | 新建：从 `IosNode.tsx` 移出的共用样式；图标支持 `sf:`        |
+| `components/SfSymbolPicker.tsx`                              | 新建：图标选择器的 SF Symbols 页                             |
+| `lib/tokens.ts`、`lib/i18n.ts`                               | 注册新部件和两个面板分类                                     |
+| `lib/prompt.ts`、`lib/prompt-ios.ts`                         | 新部件的屏幕结构描述（4 种语言）和 SwiftUI 说明（英、中）；`sf:` 名称转换 |
+| `components/M3Node.tsx`、`components/IosNode.tsx`            | 图标支持 `sf:`；iOS 专用部件在任何目标下都用 iOS 外观        |
+| `components/PartsPalette.tsx`、`components/PartInspector.tsx`、`components/IconPicker.tsx` | 面板分类、文字和条目编辑、SF Symbols 页                      |
+| `public/agent.md`                                            | iOS 目标说明                                                 |
+| 测试                                                         | 新增 `lib/sfsymbols.test.ts` 和 `lib/iosKinds.test.ts`；`lib/prompt-baseline.test.ts` 固定为原有的 36 种部件 |
+
+有意保留的差异：
+
+- 新部件在 Android 和 Web 提示词中只有屏幕结构描述，没有 Material 样式说明。
+- 图表在画布上的数值是示意，提示词要求使用应用的真实数据。
+- 菜单在画布上只画展开状态，不画触发它的按钮。
+- 目录外的 SF Symbol 名称在画布上显示为通用占位字形。
+- 属性面板只为仪表加了数值滑块；步进器的数值保持默认值 1，可以在 JSON 或 AI 草图中设置。
+
+前置条件：阶段 2 已提交，测试全部通过。
+
+1. 新建分支：`git checkout -b feat/ios-controls`。
+2. 检查补丁：`git apply --check 04-ios-controls-charts-sfsymbols.patch`。如果检查失败，停止执行并报告完整输出。这个补丁改动 19 个文件，不提供手工应用步骤。
+3. 应用补丁：`git apply 04-ios-controls-charts-sfsymbols.patch`。
+4. 运行 `npm run typecheck`。预期结果：退出码 0。
+5. 运行 `npm test`。预期结果：27 个测试文件全部通过，`prompt-baseline` 的 8 个快照没有变化。
+
+警告：如果 `prompt-baseline` 测试失败，禁止用 `-u` 更新快照。撤销引起差异的修改，再运行第 5 步。
+
+1. 运行 `npm run dev`，手动检查下面 5 项：
+   - 目标选「iOS」后，部件面板出现「iOS」和「图表」两个分类，共 15 个部件；选回「Android」后，这两个分类消失。
+   - 每种新部件各拖一个到画布上，外观与 `ios-controls-charts-preview.png` 一致。
+   - 选中一个有图标的部件，打开图标选择器：默认显示 SF Symbols 页；选一个符号后，画布显示相近的 Material 字形；切到 Material Symbols 页后仍能正常选择。
+   - 提示词中出现 SF Symbol 名称（例如 `magnifyingglass`），没有 `sf:` 前缀；目标切到「Android」后，变成 Material 名称（例如 `search`）。
+   - 选中图表、菜单或操作表，在右侧属性面板中增删和改名条目，画布随之更新。
+2. 提交：`git add -A && git commit -m "feat: iOS controls, Swift Charts parts and SF Symbols"`。
+
+说明：第 6 步的第 1、2 项和提示词转换已由截图和测试验证。第 3、5 项（图标选择器和条目编辑）我只做了代码检查和类型检查，没有在浏览器中操作验证。
+
 ## iOS 提示词全文：lib/prompt-ios.ts
 
 `lib/prompt-ios.ts` 存放 iOS 提示词的全部文本，共 399 行。以后要调整 iOS 的写法，只改这个文件，`lib/prompt.ts` 不用再动。本节代码与 `02-ios-prompt.patch` 中的同名文件相同；两者不一致时，以补丁为准。
@@ -1005,6 +1087,8 @@ Sonnet 的工作满足以下全部条件时，阶段 1 算完成：
 
 阶段 2 新增 `components/IosNode.test.tsx`，检查 4 件事：7 种 iOS 外观部件都不在 `MEASURED` 中；其他部件不换外观；每种部件在浅色和深色下都按 Material 部件的宽高绘制；作者输入的文字会显示出来。
 
+阶段 3 新增 2 个测试文件。`lib/sfsymbols.test.ts` 检查目录格式、替代字形、提示词中的名称转换和搜索。`lib/iosKinds.test.ts` 检查 5 件事：新部件的注册和面板分类；4 种语言下的默认内容和条目上限；菜单和操作表的高度随条目增加；提示词中的描述和 SwiftUI 说明；`sf:` 名称在 iOS 提示词中保留为 SF Symbol 名称、在 Android 提示词中换成 Material 名称。`lib/prompt-baseline.test.ts` 改为固定使用原有的 36 种部件，所以新增部件不会改变基线快照。
+
 `lib/prompt-ios.test.ts` 全文（手工应用 M2 时使用）：
 
 ```ts
@@ -1133,6 +1217,12 @@ Sonnet 只需按第 5 节执行命令和替换文本，不需要做设计判断�
 - 调整某个部件的 iOS 写法：改 `STYLE_NOTES_IOS.en` 和 `STYLE_NOTES_IOS.zh` 中同一个键，然后运行 `npm test`。
 - 增加图标对照：在 `ICON_MAP_IOS` 中加一项 `Material 名: "SF Symbol 名"`。值只能包含小写字母、数字和点，测试会检查。
 - iOS 28 发布后：改 `PH_IOS` 中 4 种语言的部署目标和 SDK 版本、`GENERAL_EN` 和 `GENERAL_ZH` 的第 5 条，以及 `lib/prompt.test.ts` 中 `PLATFORM_LINE` 的 4 个 `ios` 值。
+
+阶段 3 之后的维护：
+
+- 新增一个 iOS 部件：在 `lib/iosKinds.ts` 的 `IOS_KINDS`、`IOS_KIND_SPEC`、`IOS_KIND_TEXT`（4 种语言）中各加一项；在 `lib/prompt-ios.ts` 的 `STYLE_NOTES_IOS`（`en`、`zh`）和 `IOS_ITEM_TEXT`（4 种语言）中各加一项；在 `components/IosControls.tsx` 或 `components/IosCharts.tsx` 中加绘制。前 5 项漏掉任何一项，typecheck 或测试会报错；绘制要在浏览器中检查。
+- 增加一个 SF Symbol：在 `lib/sfsymbols.ts` 的 `RAW` 中加一行 `名称|Material 替代字形|搜索词`。测试会检查名称格式和重复。
+- 根目录的 `AGENTS.md` 由 `next dev` 自动生成，本方案没有改它。AI 草图功能读取的是 `public/agent.md`。
 
 第 2 段（部件样式说明：英文）：
 

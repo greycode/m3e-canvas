@@ -1,79 +1,24 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { IOS_CHART_KINDS, IOS_KINDS, isIosKind } from "../lib/iosKinds";
 import { Item, Kind, NAV_BAR_H, Palette, Radii, STATUS_BAR_H, isMeasured, isScrollableTabs } from "../lib/tokens";
+import { IosChart } from "./IosCharts";
+import { IosControl } from "./IosControls";
+import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./iosStyle";
 
 /* When the prompt targets iOS, the canvas draws these parts the way iOS 26 draws them.
  * Each one fills exactly the box its Material part has (sizeOf is untouched), so snapping,
  * runs, tidy and the prompt see no difference. Parts whose width comes from their content
  * (buttons, chips, switches…) keep the Material drawing, since their width is measured
- * from that drawing. Icons stay Material Symbols: SF Symbols may not ship on the web. */
+ * from that drawing. The iOS-only kinds (lib/iosKinds.ts) are always drawn this way.
+ * Icons may be SF Symbol names; the canvas draws their Material stand-ins, since SF Symbols
+ * may not ship on the web. */
 
 /** kinds the canvas can draw in an iOS 26 skin */
-export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar"];
+export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS];
 
 /** the part has an iOS skin and its size does not depend on how it is drawn */
 export const takesIosSkin = (item: Item) => IOS_SKIN_KINDS.includes(item.kind) && !isMeasured(item);
-
-const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif";
-
-/** the iOS system colors the skin needs, for the light or the dark canvas */
-function sys(dark: boolean) {
-  return {
-    label: dark ? "#FFFFFF" : "#000000",
-    secondary: dark ? "rgba(235,235,245,0.6)" : "rgba(60,60,67,0.6)",
-    fill: dark ? "rgba(118,118,128,0.24)" : "rgba(118,118,128,0.12)",
-    track: dark ? "rgba(120,120,128,0.32)" : "rgba(120,120,128,0.2)",
-    row: dark ? "#1C1C1E" : "#FFFFFF",
-    knob: dark ? "#636366" : "#FFFFFF",
-  };
-}
-type Sys = ReturnType<typeof sys>;
-
-/** Liquid Glass, approximated: a translucent fill that blurs what is behind it, a light rim and a soft shadow */
-function glass(dark: boolean, lifted: boolean): CSSProperties {
-  return {
-    background: dark ? "rgba(44,44,46,0.72)" : "rgba(255,255,255,0.72)",
-    backdropFilter: "blur(20px) saturate(180%)",
-    WebkitBackdropFilter: "blur(20px) saturate(180%)",
-    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
-    boxShadow: lifted ? "0 8px 24px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.12)",
-    boxSizing: "border-box",
-  };
-}
-
-const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
-const oneLine: CSSProperties = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
-const center: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center" };
-
-/** a Material Symbols glyph, the same face the Material parts use */
-function Glyph({ name, size, color, fill }: { name: string; size: number; color: string; fill?: boolean }) {
-  return (
-    <span className="msr" aria-hidden data-fill={fill ? "1" : "0"} style={{ fontSize: size, color, lineHeight: 1 }}>
-      {name}
-    </span>
-  );
-}
-
-/** the iOS switch: 51×31, the accent color when on */
-function Switch({ on, p, s }: { on: boolean; p: Palette; s: Sys }) {
-  return (
-    <div style={{ position: "relative", flex: "0 0 auto", width: 51, height: 31, borderRadius: 999, background: on ? p.primary : s.track }}>
-      <div
-        style={{
-          position: "absolute",
-          top: 2,
-          left: on ? 22 : 2,
-          width: 27,
-          height: 27,
-          borderRadius: 999,
-          background: "#FFFFFF",
-          boxShadow: "0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16)",
-        }}
-      />
-    </div>
-  );
-}
 
 /** the floating tab bar: a glass capsule above the home indicator, the selected tab tinted */
 function TabBar({ item, p, s, dark }: { item: Item; p: Palette; s: Sys; dark: boolean }) {
@@ -267,7 +212,8 @@ export function IosBody({ item, p, w, h, dark, radii }: { item: Item; p: Palette
       case "toolbar":
         return <Toolbar item={item} p={p} s={s} h={h} dark={dark} />;
       default:
-        return null;
+        if (!isIosKind(item.kind)) return null;
+        return IOS_CHART_KINDS.includes(item.kind) ? <IosChart item={item} p={p} s={s} w={w} h={h} /> : <IosControl item={item} p={p} s={s} w={w} h={h} dark={dark} />;
     }
   })();
   return <div style={{ position: "relative", width: w, height: h, fontFamily: FONT, boxSizing: "border-box" }}>{body}</div>;

@@ -1,6 +1,7 @@
 import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
 import { constrainModalRails } from "./rail";
-import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
+import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, iosItemText, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
+import { sfToMaterial, sfToNames } from "./sfsymbols";
 import {
   CONTENT_W,
   Place,
@@ -293,6 +294,8 @@ function splitMenuText(it: Item, lang: Lang): string {
 }
 
 function itemJa(it: Item): string {
+  const ios = iosItemText(it, "ja");
+  if (ios) return ios;
   const q = qj;
   const v = VARIANT_TEXT.ja[it.variant];
   const noun = KIND_TEXT.ja[it.kind]?.noun ?? it.kind;
@@ -390,6 +393,8 @@ function itemJa(it: Item): string {
 }
 
 function itemEn(it: Item): string {
+  const ios = iosItemText(it, "en");
+  if (ios) return ios;
   const q = qe;
   const v = VARIANT_TEXT.en[it.variant];
   const noun = KIND_TEXT.en[it.kind]?.noun ?? it.kind;
@@ -487,6 +492,8 @@ function itemEn(it: Item): string {
 }
 
 function itemZh(it: Item): string {
+  const ios = iosItemText(it, "zh");
+  if (ios) return ios;
   const q = qz;
   const v = VARIANT_TEXT.zh[it.variant];
   const noun = KIND_TEXT.zh[it.kind]?.noun ?? it.kind;
@@ -584,6 +591,8 @@ function itemZh(it: Item): string {
 }
 
 function itemKo(it: Item): string {
+  const ios = iosItemText(it, "ko");
+  if (ios) return ios;
   const q = qe;
   const v = VARIANT_TEXT.ko[it.variant];
   const noun = KIND_TEXT.ko[it.kind]?.noun ?? it.kind;
@@ -1865,7 +1874,8 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
     lines.push(`- ${typeof line === "function" ? line(platform) : line}`);
   }
   const out = lines.join("\n");
-  return platform === "ios" ? toPointsIos(out) : out;
+  /* SF Symbol names ("sf:…") stay names on iOS and become their Material stand-ins elsewhere */
+  return platform === "ios" ? toPointsIos(sfToNames(out)) : sfToMaterial(out);
 }
 
 /** the prompt to hand out: the author's edited text when there is one, otherwise the generated one */

@@ -11,6 +11,7 @@
  */
 import type { Lang } from "./i18n";
 import type { Item, Kind, Platform, Theme } from "./tokens";
+import { isIosKind } from "./iosKinds";
 
 /** mirrors the private Viewport type in prompt.ts */
 export type ViewportIos = "phone" | "desktop" | "mixed" | "free";
@@ -224,6 +225,21 @@ const STYLE_NOTES_IOS: {
     carousel: "Carousel → `ScrollView(.horizontal) { LazyHStack(spacing: 8) { cards }.scrollTargetLayout() }` with `.scrollTargetBehavior(.viewAligned)`, `.contentMargins(.horizontal, 16)` and `.scrollIndicators(.hidden)`; cards have 20pt continuous corners and the title on a bottom gradient. Multi-browse and hero → cards sized with `.containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }`; uncontained → one fixed width; full-screen → `.containerRelativeFrame(.horizontal)` with `.scrollTargetBehavior(.paging)`.",
     datePicker: "Date picker → `DatePicker(label, selection:, displayedComponents: .date)`: modal → `.datePickerStyle(.graphical)` inside a `.sheet`; docked → `.graphical` inline; input only → `.compact`. Do not build a custom calendar grid.",
     timePicker: "Time picker → `DatePicker(label, selection:, displayedComponents: .hourAndMinute)`: dial → `.datePickerStyle(.wheel)`; input → `.compact`. AM/PM follows the user's locale.",
+    sectionHeader: "Section header → the header of a `Section` in a `List` or `Form`: `Section { rows } header: { Text(title) }`. The parts below it, up to the next section header, are that section's rows.",
+    stepper: "Stepper → SwiftUI `Stepper` with the label and the current value in its title, for example `Stepper(\"Quantity: \\(quantity)\", value: $quantity, in: 1...99)`, as a `Form` or `List` row.",
+    wheelPicker: "Wheel picker → `Picker(label, selection:) { ForEach(options) { Text($0).tag($0) } }` with `.pickerStyle(.wheel)`, starting on the selected option; inside a `Form`, give it a section of its own.",
+    colorPicker: "Color picker → `ColorPicker(label, selection: $color, supportsOpacity: false)` as a `Form` or `List` row; keep the chosen color in the model so it persists.",
+    disclosure: "Disclosure group → `DisclosureGroup(label, isExpanded: $isExpanded) { content }` in a `List` or `Form`; the content is the rows its supporting text names. The system draws the chevron and animates the expansion.",
+    textEditor: "Text editor → `TextField(placeholder, text: $text, axis: .vertical)` with `.lineLimit(5, reservesSpace: true)` in a `Form` section (a `TextEditor` with a placeholder overlay for long text). Put a Done button in `.toolbar { ToolbarItemGroup(placement: .keyboard) { … } }`.",
+    pageControl: "Page control → the pages are a `TabView` with `.tabViewStyle(.page(indexDisplayMode: .always))` and `.indexViewStyle(.page(backgroundDisplayMode: .interactive))`, one page per entry, starting on the current page. Do not draw the dots yourself.",
+    gauge: "Gauge → `Gauge(value: v, in: 0...100) { Text(label) } currentValueLabel: { Text(v, format: .number) }` with `.gaugeStyle(.accessoryCircular)` and `.tint(.accentColor)`; use `.accessoryCircularCapacity` for a fill level such as storage or battery.",
+    menu: "Menu → `Menu { Button(item, systemImage: symbol) { } … } label: { Label(title, systemImage: \"ellipsis.circle\") }`, usually as a `ToolbarItem`. The canvas shows it open; the system presents it as a Liquid Glass menu that morphs out of its button. A Delete or Remove item gets `role: .destructive` and goes last, after a `Divider()`.",
+    actionSheet: "Action sheet → `.confirmationDialog(title, isPresented: $isPresented, titleVisibility: .visible) { Button(action) { } … } message: { Text(message) }`; a Delete or Remove action gets `role: .destructive`, and the system adds Cancel. Attach it to the button that opens it so iOS 26 can anchor it to its source.",
+    emptyState: "Empty state → `ContentUnavailableView(title, systemImage: symbol, description: Text(description))`, shown in place of the list or grid while it has no items; add `actions:` with a button when the description names one. Empty search results use `ContentUnavailableView.search(text:)`.",
+    barChart: "Bar chart → Swift Charts (`import Charts`): `Chart(data) { BarMark(x: .value(\"Category\", $0.label), y: .value(\"Value\", $0.value)) }` with `.foregroundStyle(.tint)`, in a card or `Section` under the title and subtitle; the categories are the bar labels. The data comes from the app's model, never sample values; show an empty state while there is none. Keep the system axes and give the marks `.accessibilityLabel` and `.accessibilityValue`.",
+    lineChart: "Line chart → Swift Charts: a `LineMark(x:, y:)` with `.interpolationMethod(.catmullRom)` and a `PointMark` per value, `.foregroundStyle(.tint)`; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
+    areaChart: "Area chart → Swift Charts: an `AreaMark(x:, y:)` filled with `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` and a `LineMark` on the same values; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
+    pieChart: "Donut chart → Swift Charts: `SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)` with `.cornerRadius(4)` and `.foregroundStyle(by: .value(\"Category\", $0.label))`, plus `.chartLegend(position: .bottom)`; the slices are the categories. The data, empty-state and accessibility rules of the bar chart apply.",
   },
   zh: {
     box: "容器框 → 普通容器：用 `RoundedRectangle(cornerRadius:style: .continuous)` 按对照表的颜色填充，圆角取屏幕结构中给出的值，作为叠放在其上的组件的背景（ZStack，后写的在前面）。它没有自身行为，也不用 Liquid Glass。",
@@ -262,6 +278,21 @@ const STYLE_NOTES_IOS: {
     carousel: "轮播 → `ScrollView(.horizontal) { LazyHStack(spacing: 8) { cards }.scrollTargetLayout() }`，加 `.scrollTargetBehavior(.viewAligned)`、`.contentMargins(.horizontal, 16)` 和 `.scrollIndicators(.hidden)`；卡片为 20pt 连续圆角，标题放在底部渐变上。多项浏览和主图（hero）→ 卡片宽度用 `.containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }`；不受限（uncontained）→ 固定宽度；全屏 → `.containerRelativeFrame(.horizontal)` 加 `.scrollTargetBehavior(.paging)`。",
     datePicker: "日期选择器 → `DatePicker(label, selection:, displayedComponents: .date)`：模态 → 放在 `.sheet` 里的 `.datePickerStyle(.graphical)`；停靠 → 内嵌的 `.graphical`；仅输入框 → `.compact`。不要自己做日历网格。",
     timePicker: "时间选择器 → `DatePicker(label, selection:, displayedComponents: .hourAndMinute)`：表盘 → `.datePickerStyle(.wheel)`；输入 → `.compact`。上午/下午按用户的地区设置显示。",
+    sectionHeader: "分组标题 → `List` 或 `Form` 中 `Section` 的标题：`Section { rows } header: { Text(title) }`。它下面直到下一个分组标题之前的组件，都是这个分组的行。",
+    stepper: "步进器 → SwiftUI `Stepper`，标题中同时显示标签和当前值，例如 `Stepper(\"数量：\\(quantity)\", value: $quantity, in: 1...99)`，作为 `Form` 或 `List` 的一行。",
+    wheelPicker: "滚轮选择器 → `Picker(label, selection:) { ForEach(options) { Text($0).tag($0) } }`，加 `.pickerStyle(.wheel)`，初始停在选中的选项；放在 `Form` 里时单独占一个 section。",
+    colorPicker: "颜色选择器 → `ColorPicker(label, selection: $color, supportsOpacity: false)`，作为 `Form` 或 `List` 的一行；把选中的颜色保存在模型里，重启后保留。",
+    disclosure: "折叠组 → `List` 或 `Form` 中的 `DisclosureGroup(label, isExpanded: $isExpanded) { content }`；content 是辅助文字所列的那些行。箭头和展开动画由系统负责。",
+    textEditor: "多行文本框 → `Form` section 中的 `TextField(placeholder, text: $text, axis: .vertical)`，加 `.lineLimit(5, reservesSpace: true)`（长文本用带占位提示叠层的 `TextEditor`）。在 `.toolbar { ToolbarItemGroup(placement: .keyboard) { … } }` 中放一个「完成」按钮。",
+    pageControl: "页面指示器 → 页面用 `TabView` 加 `.tabViewStyle(.page(indexDisplayMode: .always))` 和 `.indexViewStyle(.page(backgroundDisplayMode: .interactive))`，每个条目一页，初始停在当前页。不要自己画圆点。",
+    gauge: "仪表 → `Gauge(value: v, in: 0...100) { Text(label) } currentValueLabel: { Text(v, format: .number) }`，加 `.gaugeStyle(.accessoryCircular)` 和 `.tint(.accentColor)`；表示存储空间、电量这类填充程度时用 `.accessoryCircularCapacity`。",
+    menu: "下拉菜单 → `Menu { Button(item, systemImage: symbol) { } … } label: { Label(title, systemImage: \"ellipsis.circle\") }`，通常放在 `ToolbarItem` 中。画布上画的是展开状态；系统会把它显示为从按钮中展开的 Liquid Glass 菜单。「删除」「移除」类菜单项加 `role: .destructive`，放在最后，前面加 `Divider()`。",
+    actionSheet: "操作表 → `.confirmationDialog(title, isPresented: $isPresented, titleVisibility: .visible) { Button(action) { } … } message: { Text(message) }`；「删除」「移除」类操作加 `role: .destructive`，「取消」由系统添加。把它挂在触发它的按钮上，让 iOS 26 能锚定到来源位置。",
+    emptyState: "空状态 → `ContentUnavailableView(title, systemImage: symbol, description: Text(description))`，列表或网格没有内容时显示在原位置；说明里提到操作时，用 `actions:` 加一个按钮。搜索无结果时用 `ContentUnavailableView.search(text:)`。",
+    barChart: "柱状图 → Swift Charts（`import Charts`）：`Chart(data) { BarMark(x: .value(\"Category\", $0.label), y: .value(\"Value\", $0.value)) }`，加 `.foregroundStyle(.tint)`，放在标题和副标题下方的卡片或 `Section` 中；分类就是各柱的标签。数据来自应用的模型，不要用示例数值；没有数据时显示空状态。保留系统坐标轴，并给各个 mark 加 `.accessibilityLabel` 和 `.accessibilityValue`。",
+    lineChart: "折线图 → Swift Charts：`LineMark(x:, y:)` 加 `.interpolationMethod(.catmullRom)`，每个值再加一个 `PointMark`，`.foregroundStyle(.tint)`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
+    areaChart: "面积图 → Swift Charts：`AreaMark(x:, y:)` 用 `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` 填充，同样的数据上再叠一条 `LineMark`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
+    pieChart: "环形图 → Swift Charts：`SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)`，加 `.cornerRadius(4)` 和 `.foregroundStyle(by: .value(\"Category\", $0.label))`，再加 `.chartLegend(position: .bottom)`；各扇区就是各分类。数据、空状态和辅助功能的要求与柱状图相同。",
   },
   ja: {},
   ko: {},
@@ -287,7 +318,7 @@ const GENERAL_EN = [
   "Spacing: use the system padding (`.padding()` is 16pt) and the margins that List, Form and NavigationStack provide. Parts described as \"in one row\" share a single HStack and never wrap; parts \"layered inside\" a container go in a ZStack (or `.overlay`) over that container, later items in front.",
   "Navigation: one NavigationStack per tab with value-based `navigationDestination(for:)`. Map the transitions in \"Behavior and navigation\": a slide in from the right, left or top → a normal push; a slide in from the bottom → `.sheet` (`.fullScreenCover` for a full-screen flow); expand → `.navigationTransition(.zoom(sourceID:in:))` with `.matchedTransitionSource`; fade → `.navigationTransition(.crossFade)` on iOS 27, a normal push on iOS 26; no animation → disable the animation with a `Transaction`. \"Back\" is the system back button and the interactive edge swipe; never disable them. Web links open with `Link` or `openURL`.",
   "Feedback: system controls provide their own highlight and glass response; a custom tappable view is a `Button` with `.buttonStyle(.plain)` and a `.contentShape`. Add `.sensoryFeedback` for selection changes and completed actions. No ripple effects.",
-  "Icons: SF Symbols only (`Image(systemName:)`, `Label(_:systemImage:)`). Icon names in this prompt are Material Symbols names: use the SF Symbol from the icon mapping line, otherwise the closest SF Symbol by meaning. TabView fills the selected tab's symbol automatically.",
+  "Icons: SF Symbols only (`Image(systemName:)`, `Label(_:systemImage:)`). Icon names in this prompt are SF Symbol names, except the Material Symbols names in the icon mapping line: use the SF Symbol given there, otherwise the closest SF Symbol by meaning. TabView fills the selected tab's symbol automatically.",
   "Accessibility: every icon-only button has an `.accessibilityLabel`; hit targets are at least 44×44pt.",
 ];
 
@@ -306,7 +337,7 @@ const GENERAL_ZH = [
   "间距使用系统内边距（`.padding()` 为 16pt）以及 List、Form、NavigationStack 自带的边距。写明“横向排成一行”的组件放进同一个 HStack，不换行；写明“内部叠放”的组件放进以该容器为底的 ZStack（或 `.overlay`），后写的在前面。",
   "导航：每个标签一个 NavigationStack，使用基于值的 `navigationDestination(for:)`。「行为与屏幕跳转」中的过渡按下面对应：从右、左或上滑入 → 普通 push；从下滑入 → `.sheet`（全屏流程用 `.fullScreenCover`）；放大 → `.navigationTransition(.zoom(sourceID:in:))` 配合 `.matchedTransitionSource`；淡入淡出 → iOS 27 用 `.navigationTransition(.crossFade)`，iOS 26 用普通 push；无动画 → 用 `Transaction` 关闭动画。“返回”就是系统返回按钮和边缘轻扫手势，不要禁用。网页链接用 `Link` 或 `openURL` 打开。",
   "反馈：系统控件自带高亮和玻璃反馈；自定义的可点击视图用加了 `.buttonStyle(.plain)` 和 `.contentShape` 的 `Button`。选择变化和操作完成时加 `.sensoryFeedback`。不要做涟漪效果。",
-  "图标只用 SF Symbols（`Image(systemName:)`、`Label(_:systemImage:)`）。本提示词中的图标名是 Material Symbols 名称：图标对照里有的用对照结果，没有的选含义最接近的 SF Symbol。TabView 会自动把选中标签的符号变成填充样式。",
+  "图标只用 SF Symbols（`Image(systemName:)`、`Label(_:systemImage:)`）。本提示词中的图标名是 SF Symbol 名称，图标对照这一行列出的除外，那些是 Material Symbols 名称：对照里有的用对照结果，没有的选含义最接近的 SF Symbol。TabView 会自动把选中标签的符号变成填充样式。",
   "辅助功能：每个只有图标的按钮都要有 `.accessibilityLabel`；点击区域不小于 44×44pt。",
 ];
 
@@ -371,7 +402,8 @@ function iconsOf(items: Item[]): string[] {
   const seen: string[] = [];
   const add = (name?: string | null) => {
     const v = name?.trim();
-    if (v && !seen.includes(v)) seen.push(v);
+    /* SF Symbol names ("sf:…") need no mapping */
+    if (v && !v.startsWith("sf:") && !seen.includes(v)) seen.push(v);
   };
   for (const it of items) {
     add(it.icon);
@@ -397,3 +429,103 @@ export function iconLineIos(items: Item[], lang: Lang): string {
 
 /** iOS measures in points: every "56dp" or "16 sp" in the finished prompt becomes "56pt" / "16pt" */
 export const toPointsIos = (text: string): string => text.replace(/(\d) ?[ds]p\b/g, "$1pt");
+
+/* ---------- the iOS-only parts in the layout ---------- */
+
+type Said = { q: (s: string) => string; label: string; sup: string; list: string; items: string; n: number; page: number; chosen: string; value: number; open: boolean; icon: string };
+
+const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
+  en: {
+    sectionHeader: (c) => `a section header ${c.q(c.label)}; the parts below it, up to the next section header, are its rows`,
+    stepper: (c) => `a stepper ${c.q(c.label)} (value ${c.value})`,
+    wheelPicker: (c) => `a wheel picker${c.label ? ` ${c.q(c.label)}` : ""} with the options ${c.list}; ${c.chosen} is selected`,
+    colorPicker: (c) => `a color picker row ${c.q(c.label)}`,
+    disclosure: (c) => `a disclosure group ${c.q(c.label)}, ${c.open ? "expanded" : "collapsed"}${c.sup ? `, revealing ${c.q(c.sup)}` : ""}`,
+    textEditor: (c) => `a multi-line text editor with the placeholder ${c.q(c.label)}`,
+    pageControl: (c) => `a page control for ${c.n} pages (${c.list}); page ${c.page} is current`,
+    gauge: (c) => `a circular gauge ${c.q(c.label)} at ${c.value}%`,
+    menu: (c) => `a pull-down menu ${c.q(c.label)}, drawn open, with the items ${c.items}`,
+    actionSheet: (c) => `an action sheet titled ${c.q(c.label)}${c.sup ? ` with the message ${c.q(c.sup)}` : ""} and the actions ${c.list}, plus Cancel`,
+    emptyState: (c) => `an empty state${c.icon ? ` with the ${c.icon} symbol` : ""}, the title ${c.q(c.label)}${c.sup ? ` and the description ${c.q(c.sup)}` : ""}`,
+    barChart: (c) => `a bar chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} bars: ${c.list}`,
+    lineChart: (c) => `a line chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
+    areaChart: (c) => `an area chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
+    pieChart: (c) => `a donut chart ${c.q(c.label)} with ${c.n} slices: ${c.list}`,
+  },
+  zh: {
+    sectionHeader: (c) => `分组标题${c.q(c.label)}，它下面直到下一个分组标题之前的组件是这一组的行`,
+    stepper: (c) => `步进器${c.q(c.label)}（当前值 ${c.value}）`,
+    wheelPicker: (c) => `滚轮选择器${c.label ? c.q(c.label) : ""}，选项为 ${c.list}，选中 ${c.chosen}`,
+    colorPicker: (c) => `颜色选择行${c.q(c.label)}`,
+    disclosure: (c) => `折叠组${c.q(c.label)}（${c.open ? "展开" : "收起"}）${c.sup ? `，展开后显示${c.q(c.sup)}` : ""}`,
+    textEditor: (c) => `多行文本框，占位文字为${c.q(c.label)}`,
+    pageControl: (c) => `页面指示器，共 ${c.n} 页（${c.list}），当前为第 ${c.page} 页`,
+    gauge: (c) => `圆形仪表${c.q(c.label)}，数值 ${c.value}%`,
+    menu: (c) => `下拉菜单${c.q(c.label)}（展开状态），菜单项为 ${c.items}`,
+    actionSheet: (c) => `操作表，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}，操作为 ${c.list}，另有“取消”`,
+    emptyState: (c) => `空状态${c.icon ? `（符号 ${c.icon}）` : ""}，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}`,
+    barChart: (c) => `柱状图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，共 ${c.n} 根柱：${c.list}`,
+    lineChart: (c) => `折线图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
+    areaChart: (c) => `面积图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
+    pieChart: (c) => `环形图${c.q(c.label)}，共 ${c.n} 个扇区：${c.list}`,
+  },
+  ja: {
+    sectionHeader: (c) => `セクション見出し${c.q(c.label)}（次の見出しまでの部品がこのセクションの行）`,
+    stepper: (c) => `ステッパー${c.q(c.label)}（値 ${c.value}）`,
+    wheelPicker: (c) => `ホイールピッカー${c.label ? c.q(c.label) : ""}（選択肢 ${c.list}、${c.chosen}を選択）`,
+    colorPicker: (c) => `カラーピッカーの行${c.q(c.label)}`,
+    disclosure: (c) => `折りたたみ項目${c.q(c.label)}（${c.open ? "展開" : "折りたたみ"}状態${c.sup ? `、開くと${c.q(c.sup)}を表示` : ""}）`,
+    textEditor: (c) => `プレースホルダー${c.q(c.label)}の複数行テキストエディタ`,
+    pageControl: (c) => `${c.n} ページのページコントロール（${c.list}、現在 ${c.page} ページ目）`,
+    gauge: (c) => `円形ゲージ${c.q(c.label)}（${c.value}%）`,
+    menu: (c) => `プルダウンメニュー${c.q(c.label)}（開いた状態、項目 ${c.items}）`,
+    actionSheet: (c) => `アクションシート（タイトル${c.q(c.label)}${c.sup ? `、メッセージ${c.q(c.sup)}` : ""}、アクション ${c.list}、キャンセル付き）`,
+    emptyState: (c) => `空の状態の表示${c.icon ? `（シンボル ${c.icon}）` : ""}（タイトル${c.q(c.label)}${c.sup ? `、説明${c.q(c.sup)}` : ""}）`,
+    barChart: (c) => `棒グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 本：${c.list}）`,
+    lineChart: (c) => `折れ線グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
+    areaChart: (c) => `面グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
+    pieChart: (c) => `ドーナツグラフ${c.q(c.label)}（${c.n} 区分：${c.list}）`,
+  },
+  ko: {
+    sectionHeader: (c) => `섹션 제목 ${c.q(c.label)} (다음 섹션 제목 전까지의 부품이 이 섹션의 행)`,
+    stepper: (c) => `스테퍼 ${c.q(c.label)} (값 ${c.value})`,
+    wheelPicker: (c) => `휠 피커${c.label ? ` ${c.q(c.label)}` : ""} (옵션 ${c.list}, ${c.chosen} 선택됨)`,
+    colorPicker: (c) => `색상 선택 행 ${c.q(c.label)}`,
+    disclosure: (c) => `펼침 그룹 ${c.q(c.label)} (${c.open ? "펼친" : "접힌"} 상태${c.sup ? `, 펼치면 ${c.q(c.sup)} 표시` : ""})`,
+    textEditor: (c) => `자리표시자가 ${c.q(c.label)}인 여러 줄 텍스트 편집기`,
+    pageControl: (c) => `${c.n}페이지 페이지 컨트롤 (${c.list}, 현재 ${c.page}페이지)`,
+    gauge: (c) => `원형 게이지 ${c.q(c.label)} (${c.value}%)`,
+    menu: (c) => `풀다운 메뉴 ${c.q(c.label)} (열린 상태, 항목 ${c.items})`,
+    actionSheet: (c) => `액션 시트 (제목 ${c.q(c.label)}${c.sup ? `, 메시지 ${c.q(c.sup)}` : ""}, 동작 ${c.list}, 취소 포함)`,
+    emptyState: (c) => `빈 상태 화면${c.icon ? ` (심볼 ${c.icon})` : ""} (제목 ${c.q(c.label)}${c.sup ? `, 설명 ${c.q(c.sup)}` : ""})`,
+    barChart: (c) => `막대 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 막대: ${c.list})`,
+    lineChart: (c) => `꺾은선 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
+    areaChart: (c) => `영역 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
+    pieChart: (c) => `도넛 차트 ${c.q(c.label)} (${c.n}개 조각: ${c.list})`,
+  },
+};
+
+const QUOTE: Record<Lang, (s: string) => string> = { ja: (s) => `「${s.trim()}」`, zh: (s) => `“${s.trim()}”`, en: (s) => `"${s.trim()}"`, ko: (s) => `"${s.trim()}"` };
+
+/** the layout's words for an iOS-only part, in any target's prompt; null for every other kind */
+export function iosItemText(it: Item, lang: Lang): string | null {
+  if (!isIosKind(it.kind)) return null;
+  const q = QUOTE[lang];
+  const sep = lang === "ja" || lang === "zh" ? "、" : ", ";
+  const tabs = it.tabs ?? [];
+  const sel = Math.min(Math.max(0, it.selected ?? 0), Math.max(0, tabs.length - 1));
+  const c: Said = {
+    q,
+    label: it.label.trim(),
+    sup: it.supporting?.trim() ?? "",
+    list: tabs.map((t) => q(t.label || "?")).join(sep),
+    items: tabs.map((t) => `${q(t.label || "?")}${t.icon ? ` (${t.icon})` : ""}`).join(sep),
+    n: tabs.length,
+    page: sel + 1,
+    chosen: tabs[sel] ? q(tabs[sel].label) : "?",
+    value: it.value ?? (it.kind === "stepper" ? 1 : 72),
+    open: !!it.checked,
+    icon: it.icon ?? "",
+  };
+  return IOS_ITEM_TEXT[lang][it.kind](c);
+}

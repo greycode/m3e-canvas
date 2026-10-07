@@ -1,0 +1,1992 @@
+diff --git a/components/IconPicker.tsx b/components/IconPicker.tsx
+index 0c29c41..63c4215 100644
+--- a/components/IconPicker.tsx
++++ b/components/IconPicker.tsx
+@@ -3,6 +3,8 @@
+ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+ import { Palette } from "@/lib/tokens";
+ import { t, useLang } from "@/lib/i18n";
++import { usePlatform } from "@/lib/platform";
++import { SfSymbolGrid } from "./SfSymbolPicker";
+ 
+ type IconMeta = { n: string; p: number; t: string };
+ 
+@@ -35,6 +37,9 @@ export function IconPicker({
+   extras?: { icon: string; title: string }[];
+ }) {
+   const lang = useLang();
++  /* on the iOS target the picker opens on SF Symbols; Material Symbols stay one tap away */
++  const ios = usePlatform() === "ios";
++  const [sfMode, setSfMode] = useState(true);
+   const [icons, setIcons] = useState<IconMeta[] | null>(cache);
+   const [q, setQ] = useState("");
+   const [fontReady, setFontReady] = useState(false);
+@@ -147,7 +152,7 @@ export function IconPicker({
+ 
+   const loading = !icons || !fontReady;
+ 
+-  return (
++  const materialPicker = (
+     <div>
+       {/* Hidden probes need intrinsic text widths to distinguish missing glyphs. */}
+       <div
+@@ -351,4 +356,21 @@ export function IconPicker({
+       </div>
+     </div>
+   );
++  if (!ios) return materialPicker;
++  const pill = (on: boolean): React.CSSProperties => ({ flex: 1, height: 32, border: "none", borderRadius: 999, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", background: on ? palette.primary : "transparent", color: on ? palette.onPrimary : palette.onSurfaceVariant });
++  return (
++    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
++      <div role="group" style={{ display: "flex", gap: 4, padding: 4, borderRadius: 999, background: palette.surfaceContainerLow }}>
++        <button aria-pressed={sfMode} onClick={() => setSfMode(true)} style={pill(sfMode)}>
++          SF Symbols
++        </button>
++        <button aria-pressed={!sfMode} onClick={() => setSfMode(false)} style={pill(!sfMode)}>
++          Material Symbols
++        </button>
++      </div>
++      {sfMode && <SfSymbolGrid value={value} onChange={onChange} palette={palette} />}
++      {/* the Material grid stays mounted so its glyph measuring keeps working; it is hidden while SF Symbols show */}
++      <div style={sfMode ? { position: "absolute", visibility: "hidden", pointerEvents: "none", height: 0, overflow: "hidden" } : undefined}>{materialPicker}</div>
++    </div>
++  );
+ }
+diff --git a/components/IosCharts.tsx b/components/IosCharts.tsx
+new file mode 100644
+index 0000000..9532808
+--- /dev/null
++++ b/components/IosCharts.tsx
+@@ -0,0 +1,114 @@
++"use client";
++
++import type { Item, Palette } from "../lib/tokens";
++import { Sys, oneLine } from "./iosStyle";
++
++/* Swift Charts, sketched: a card with the title and subtitle over the plot. The heights are
++ * illustrative only; the prompt asks the code model for the app's real data. */
++
++/** the illustrative values, one per category in order */
++const SHAPE = [0.62, 0.85, 0.48, 0.92, 0.7, 0.55, 0.78, 0.66, 0.9, 0.5, 0.73, 0.6];
++/** the slice colors: the accent first, then the iOS system colors */
++const series = (p: Palette) => [p.primary, "#34C759", "#FF9500", "#5AC8FA", "#FF2D55", "#AF52DE", "#FFCC00", "#8E8E93"];
++const f = (n: number) => n.toFixed(1);
++
++/** bars, a line or an area over the categories, with dashed gridlines and the trailing axis Swift Charts draws on iOS */
++function XYPlot({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
++  const labels = (item.tabs ?? []).map((t) => t.label);
++  const n = Math.max(1, labels.length);
++  const axisW = 28;
++  const axisH = 18;
++  const pw = Math.max(1, w - axisW);
++  const ph = Math.max(1, h - axisH);
++  const slot = pw / n;
++  const x = (i: number) => slot * (i + 0.5);
++  const y = (i: number) => ph - SHAPE[i % SHAPE.length] * ph * 0.92;
++  const line = labels.map((_, i) => `${i ? "L" : "M"}${f(x(i))} ${f(y(i))}`).join("");
++  const gradient = `ios-area-${item.id}`;
++  return (
++    <svg width={w} height={h} aria-hidden style={{ display: "block", overflow: "visible" }}>
++      <defs>
++        <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
++          <stop offset="0" stopColor={p.primary} stopOpacity={0.35} />
++          <stop offset="1" stopColor={p.primary} stopOpacity={0.03} />
++        </linearGradient>
++      </defs>
++      {[0, 0.5, 1].map((g) => (
++        <g key={g}>
++          <line x1={0} x2={pw} y1={f(ph * g)} y2={f(ph * g)} stroke={s.separator} strokeDasharray="2 3" />
++          <text x={pw + 6} y={f(ph * g + 4)} fontSize={11} fill={s.secondary}>
++            {Math.round((1 - g) * 100)}
++          </text>
++        </g>
++      ))}
++      {item.kind === "barChart" &&
++        labels.map((_, i) => {
++          const bw = slot * 0.55;
++          return <rect key={i} x={f(x(i) - bw / 2)} y={f(y(i))} width={f(bw)} height={f(ph - y(i))} rx={4} fill={p.primary} />;
++        })}
++      {item.kind === "areaChart" && <path d={`${line}L${f(x(n - 1))} ${ph}L${f(x(0))} ${ph}Z`} fill={`url(#${gradient})`} />}
++      {(item.kind === "lineChart" || item.kind === "areaChart") && <path d={line} fill="none" stroke={p.primary} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
++      {item.kind === "lineChart" && labels.map((_, i) => <circle key={i} cx={f(x(i))} cy={f(y(i))} r={3.5} fill={p.primary} stroke={s.row} strokeWidth={1.5} />)}
++      {labels.map((l, i) => (
++        <text key={i} x={f(x(i))} y={ph + 13} fontSize={11} textAnchor="middle" fill={s.secondary}>
++          {l}
++        </text>
++      ))}
++    </svg>
++  );
++}
++
++/** a donut of SectorMarks: inner radius 0.618 of the outer, 1.5° between slices, the legend underneath */
++function Donut({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
++  const labels = (item.tabs ?? []).map((t) => t.label);
++  const colors = series(p);
++  const legendH = 28;
++  const d = Math.max(20, Math.min(w, h - legendH));
++  const cx = w / 2;
++  const cy = d / 2;
++  const R = d / 2;
++  const r = R * 0.618;
++  const values = labels.map((_, i) => SHAPE[i % SHAPE.length]);
++  const total = values.reduce((a, b) => a + b, 0) || 1;
++  const gap = (1.5 * Math.PI) / 180;
++  const pt = (a: number, rad: number) => `${f(cx + rad * Math.cos(a))} ${f(cy + rad * Math.sin(a))}`;
++  let at = -Math.PI / 2;
++  const slices = values.map((v, i) => {
++    const a0 = at + gap / 2;
++    const a1 = at + (v / total) * 2 * Math.PI - gap / 2;
++    at += (v / total) * 2 * Math.PI;
++    const large = a1 - a0 > Math.PI ? 1 : 0;
++    return <path key={i} d={`M${pt(a0, R)}A${f(R)} ${f(R)} 0 ${large} 1 ${pt(a1, R)}L${pt(a1, r)}A${f(r)} ${f(r)} 0 ${large} 0 ${pt(a0, r)}Z`} fill={colors[i % colors.length]} />;
++  });
++  return (
++    <div>
++      <svg width={w} height={d} aria-hidden style={{ display: "block" }}>
++        {slices}
++      </svg>
++      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px", marginTop: 8 }}>
++        {labels.map((l, i) => (
++          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: s.secondary }}>
++            <span style={{ width: 8, height: 8, borderRadius: 999, background: colors[i % colors.length] }} />
++            {l}
++          </span>
++        ))}
++      </div>
++    </div>
++  );
++}
++
++/** one Swift Charts part in its box: a grouped card with the title, the subtitle and the plot */
++export function IosChart({ item, p, s, w, h }: { item: Item; p: Palette; s: Sys; w: number; h: number }) {
++  const pad = 16;
++  const sub = !!item.supporting?.trim();
++  const head = 22 + (sub ? 18 : 0) + 10;
++  const pw = Math.max(1, w - pad * 2);
++  const ph = Math.max(1, h - pad * 2 - head);
++  return (
++    <div style={{ position: "absolute", inset: 0, padding: pad, boxSizing: "border-box", borderRadius: 16, background: s.row }}>
++      <div style={{ ...oneLine, fontSize: 17, fontWeight: 600, lineHeight: "22px", color: s.label }}>{item.label}</div>
++      {sub && <div style={{ ...oneLine, fontSize: 13, lineHeight: "18px", color: s.secondary }}>{item.supporting}</div>}
++      <div style={{ marginTop: 10 }}>{item.kind === "pieChart" ? <Donut item={item} p={p} s={s} w={pw} h={ph} /> : <XYPlot item={item} p={p} s={s} w={pw} h={ph} />}</div>
++    </div>
++  );
++}
+diff --git a/components/IosControls.tsx b/components/IosControls.tsx
+new file mode 100644
+index 0000000..4b5795a
+--- /dev/null
++++ b/components/IosControls.tsx
+@@ -0,0 +1,224 @@
++"use client";
++
++import { t, useLang } from "../lib/i18n";
++import type { Item, Palette } from "../lib/tokens";
++import { DESTRUCTIVE, Glyph, Sys, center, glass, oneLine, rowStyle } from "./iosStyle";
++
++/* The SwiftUI controls only the iOS target offers, drawn the way iOS 26 draws them.
++ * Each fills exactly the w×h that sizeOf gives its kind. */
++
++type Props = { item: Item; p: Palette; s: Sys; w: number; h: number; dark: boolean };
++
++/** a grouped section's header: footnote type in the secondary color, sitting on the section below */
++function SectionHeader({ item, s }: Props) {
++  return <div style={{ ...oneLine, position: "absolute", left: 16, right: 16, bottom: 6, fontSize: 13, color: s.secondary, textTransform: "uppercase", letterSpacing: 0.2 }}>{item.label}</div>;
++}
++
++/** a row with the label and value, and the − / + capsule */
++function Stepper({ item, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.label }}>
++        {item.label}
++        {item.label.trim() ? ": " : ""}
++        {item.value ?? 1}
++      </span>
++      <div style={{ display: "flex", alignItems: "center", flex: "0 0 auto", height: 32, borderRadius: 999, background: s.fill }}>
++        <div style={{ ...center, width: 46, height: 32 }}>
++          <Glyph name="remove" size={20} color={s.label} />
++        </div>
++        <div style={{ width: 1, height: 18, background: s.separator }} />
++        <div style={{ ...center, width: 46, height: 32 }}>
++          <Glyph name="add" size={20} color={s.label} />
++        </div>
++      </div>
++    </div>
++  );
++}
++
++/** a wheel: the selected option in the band at the middle, two neighbours either side fading out */
++function WheelPicker({ item, s, h }: Props) {
++  const options = item.tabs ?? [];
++  const sel = Math.min(options.length - 1, Math.max(0, item.selected ?? 0));
++  const rowH = 34;
++  const mid = h / 2;
++  return (
++    <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 12, background: s.row }}>
++      <div style={{ position: "absolute", left: 8, right: 8, top: mid - rowH / 2, height: rowH, borderRadius: 8, background: s.fill }} />
++      {options.map((o, i) => {
++        const d = Math.abs(i - sel);
++        if (d > 2) return null;
++        return (
++          <div
++            key={i}
++            style={{
++              ...center,
++              ...oneLine,
++              position: "absolute",
++              left: 16,
++              right: 16,
++              top: mid - rowH / 2 + (i - sel) * rowH,
++              height: rowH,
++              fontSize: d === 0 ? 21 : 19,
++              color: d === 0 ? s.label : s.secondary,
++              opacity: d === 0 ? 1 : d === 1 ? 0.75 : 0.4,
++              transform: `scaleY(${d === 0 ? 1 : d === 1 ? 0.92 : 0.8})`,
++            }}
++          >
++            {o.label}
++          </div>
++        );
++      })}
++    </div>
++  );
++}
++
++/** a row with the color well: the chosen color inside a ring of the spectrum */
++function ColorPicker({ item, p, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.label }}>{item.label}</span>
++      <div style={{ ...center, flex: "0 0 auto", width: 28, height: 28, borderRadius: 999, background: "conic-gradient(#FF3B30, #FFCC00, #34C759, #5AC8FA, #007AFF, #AF52DE, #FF2D55, #FF3B30)" }}>
++        <div style={{ width: 20, height: 20, borderRadius: 999, background: p.primary, boxShadow: `0 0 0 2px ${s.row}` }} />
++      </div>
++    </div>
++  );
++}
++
++/** a row with the accent chevron, turned down while the group is open */
++function Disclosure({ item, p, s }: Props) {
++  return (
++    <div style={rowStyle(s)}>
++      <span style={{ ...oneLine, flex: 1, fontSize: 17, color: s.label }}>{item.label}</span>
++      <span style={{ display: "inline-flex", transform: item.checked ? "rotate(90deg)" : undefined }}>
++        <Glyph name="chevron_right" size={20} color={p.primary} />
++      </span>
++    </div>
++  );
++}
++
++/** a multi-line field: the placeholder at the top left of a grouped row */
++function TextEditor({ item, s }: Props) {
++  return (
++    <div style={{ position: "absolute", inset: 0, padding: "11px 16px", boxSizing: "border-box", borderRadius: 10, background: s.row }}>
++      <span style={{ fontSize: 17, color: s.tertiary }}>{item.label}</span>
++    </div>
++  );
++}
++
++/** one dot per page, the current one solid */
++function PageControl({ item, s }: Props) {
++  const n = item.tabs?.length ?? 0;
++  const sel = item.selected ?? 0;
++  return (
++    <div style={{ ...center, position: "absolute", inset: 0, gap: 9 }}>
++      {Array.from({ length: n }, (_, i) => (
++        <div key={i} style={{ width: 8, height: 8, borderRadius: 999, background: i === sel ? s.label : s.tertiary }} />
++      ))}
++    </div>
++  );
++}
++
++/** the accessory-circular gauge: a 270° ring with the value inside and the label under it */
++function Gauge({ item, p, s, w }: Props) {
++  const v = Math.min(100, Math.max(0, item.value ?? 72));
++  const size = 64;
++  const stroke = 6;
++  const r = (size - stroke) / 2;
++  const c = 2 * Math.PI * r;
++  const track = c * 0.75;
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, paddingTop: 4, boxSizing: "border-box" }}>
++      <div style={{ position: "relative", width: size, height: size }}>
++        <svg width={size} height={size} style={{ transform: "rotate(135deg)" }} aria-hidden>
++          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={s.track} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${track} ${c}`} />
++          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={p.primary} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${(track * v) / 100} ${c}`} />
++        </svg>
++        <div style={{ ...center, position: "absolute", inset: 0, fontSize: 17, fontWeight: 600, color: s.label }}>{v}</div>
++      </div>
++      <span style={{ ...oneLine, maxWidth: w, fontSize: 12, color: s.secondary }}>{item.label}</span>
++    </div>
++  );
++}
++
++/** a pull-down menu, drawn open: a glass panel of rows with their symbols at the trailing edge */
++function Menu({ item, s, dark }: Props) {
++  const items = item.tabs ?? [];
++  return (
++    <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "6px 0", borderRadius: 22, ...glass(dark, true) }}>
++      {items.map((e, i) => {
++        const c = DESTRUCTIVE.test(e.label) ? s.red : s.label;
++        return (
++          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, height: 44, padding: "0 18px", boxSizing: "border-box", borderTop: i > 0 ? `0.5px solid ${s.separator}` : undefined }}>
++            <span style={{ ...oneLine, flex: 1, fontSize: 17, color: c }}>{e.label}</span>
++            {e.icon && <Glyph name={e.icon} size={20} color={c} />}
++          </div>
++        );
++      })}
++    </div>
++  );
++}
++
++/** a confirmation dialog: the title and message over the actions, then Cancel on its own */
++function ActionSheet({ item, p, s, dark }: Props) {
++  const lang = useLang();
++  const actions = item.tabs ?? [];
++  const card = { overflow: "hidden", borderRadius: 22, ...glass(dark, true) } as const;
++  return (
++    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", gap: 8 }}>
++      <div style={card}>
++        <div style={{ ...center, flexDirection: "column", gap: 4, height: 72, padding: "0 16px", boxSizing: "border-box", textAlign: "center" }}>
++          <span style={{ ...oneLine, maxWidth: "100%", fontSize: 13, fontWeight: 600, color: s.secondary }}>{item.label}</span>
++          {item.supporting?.trim() && <span style={{ ...oneLine, maxWidth: "100%", fontSize: 13, color: s.secondary }}>{item.supporting}</span>}
++        </div>
++        {actions.map((a, i) => (
++          <div key={i} style={{ ...center, ...oneLine, height: 56, boxSizing: "border-box", borderTop: `0.5px solid ${s.separator}`, fontSize: 20, color: DESTRUCTIVE.test(a.label) ? s.red : p.primary }}>
++            {a.label}
++          </div>
++        ))}
++      </div>
++      <div style={{ ...card, ...center, flex: "0 0 auto", height: 56, fontSize: 20, fontWeight: 600, color: p.primary }}>{t("cancel", lang)}</div>
++    </div>
++  );
++}
++
++/** ContentUnavailableView: the large symbol, the title and the description, centred */
++function EmptyState({ item, s }: Props) {
++  return (
++    <div style={{ ...center, position: "absolute", inset: 0, flexDirection: "column", gap: 8, padding: "0 24px", textAlign: "center" }}>
++      {item.icon && <Glyph name={item.icon} size={56} color={s.secondary} />}
++      <span style={{ marginTop: 4, fontSize: 22, fontWeight: 700, color: s.label }}>{item.label}</span>
++      {item.supporting?.trim() && <span style={{ fontSize: 15, lineHeight: 1.35, color: s.secondary }}>{item.supporting}</span>}
++    </div>
++  );
++}
++
++/** one iOS-only control in its box */
++export function IosControl(props: Props) {
++  switch (props.item.kind) {
++    case "sectionHeader":
++      return <SectionHeader {...props} />;
++    case "stepper":
++      return <Stepper {...props} />;
++    case "wheelPicker":
++      return <WheelPicker {...props} />;
++    case "colorPicker":
++      return <ColorPicker {...props} />;
++    case "disclosure":
++      return <Disclosure {...props} />;
++    case "textEditor":
++      return <TextEditor {...props} />;
++    case "pageControl":
++      return <PageControl {...props} />;
++    case "gauge":
++      return <Gauge {...props} />;
++    case "menu":
++      return <Menu {...props} />;
++    case "actionSheet":
++      return <ActionSheet {...props} />;
++    case "emptyState":
++      return <EmptyState {...props} />;
++    default:
++      return null;
++  }
++}
+diff --git a/components/IosNode.tsx b/components/IosNode.tsx
+index 1d4ceb0..b0c62e8 100644
+--- a/components/IosNode.tsx
++++ b/components/IosNode.tsx
+@@ -1,80 +1,25 @@
+ "use client";
+ 
+-import type { CSSProperties } from "react";
++import { IOS_CHART_KINDS, IOS_KINDS, isIosKind } from "../lib/iosKinds";
+ import { Item, Kind, NAV_BAR_H, Palette, Radii, STATUS_BAR_H, isMeasured, isScrollableTabs } from "../lib/tokens";
++import { IosChart } from "./IosCharts";
++import { IosControl } from "./IosControls";
++import { FONT, Glyph, Switch, Sys, center, glass, oneLine, sys, tint } from "./iosStyle";
+ 
+ /* When the prompt targets iOS, the canvas draws these parts the way iOS 26 draws them.
+  * Each one fills exactly the box its Material part has (sizeOf is untouched), so snapping,
+  * runs, tidy and the prompt see no difference. Parts whose width comes from their content
+  * (buttons, chips, switches…) keep the Material drawing, since their width is measured
+- * from that drawing. Icons stay Material Symbols: SF Symbols may not ship on the web. */
++ * from that drawing. The iOS-only kinds (lib/iosKinds.ts) are always drawn this way.
++ * Icons may be SF Symbol names; the canvas draws their Material stand-ins, since SF Symbols
++ * may not ship on the web. */
+ 
+ /** kinds the canvas can draw in an iOS 26 skin */
+-export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar"];
++export const IOS_SKIN_KINDS: Kind[] = ["bottomNav", "topAppBar", "listItem", "searchBar", "tabs", "slider", "toolbar", ...IOS_KINDS];
+ 
+ /** the part has an iOS skin and its size does not depend on how it is drawn */
+ export const takesIosSkin = (item: Item) => IOS_SKIN_KINDS.includes(item.kind) && !isMeasured(item);
+ 
+-const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif";
+-
+-/** the iOS system colors the skin needs, for the light or the dark canvas */
+-function sys(dark: boolean) {
+-  return {
+-    label: dark ? "#FFFFFF" : "#000000",
+-    secondary: dark ? "rgba(235,235,245,0.6)" : "rgba(60,60,67,0.6)",
+-    fill: dark ? "rgba(118,118,128,0.24)" : "rgba(118,118,128,0.12)",
+-    track: dark ? "rgba(120,120,128,0.32)" : "rgba(120,120,128,0.2)",
+-    row: dark ? "#1C1C1E" : "#FFFFFF",
+-    knob: dark ? "#636366" : "#FFFFFF",
+-  };
+-}
+-type Sys = ReturnType<typeof sys>;
+-
+-/** Liquid Glass, approximated: a translucent fill that blurs what is behind it, a light rim and a soft shadow */
+-function glass(dark: boolean, lifted: boolean): CSSProperties {
+-  return {
+-    background: dark ? "rgba(44,44,46,0.72)" : "rgba(255,255,255,0.72)",
+-    backdropFilter: "blur(20px) saturate(180%)",
+-    WebkitBackdropFilter: "blur(20px) saturate(180%)",
+-    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
+-    boxShadow: lifted ? "0 8px 24px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.12)",
+-    boxSizing: "border-box",
+-  };
+-}
+-
+-const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+-const oneLine: CSSProperties = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+-const center: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center" };
+-
+-/** a Material Symbols glyph, the same face the Material parts use */
+-function Glyph({ name, size, color, fill }: { name: string; size: number; color: string; fill?: boolean }) {
+-  return (
+-    <span className="msr" aria-hidden data-fill={fill ? "1" : "0"} style={{ fontSize: size, color, lineHeight: 1 }}>
+-      {name}
+-    </span>
+-  );
+-}
+-
+-/** the iOS switch: 51×31, the accent color when on */
+-function Switch({ on, p, s }: { on: boolean; p: Palette; s: Sys }) {
+-  return (
+-    <div style={{ position: "relative", flex: "0 0 auto", width: 51, height: 31, borderRadius: 999, background: on ? p.primary : s.track }}>
+-      <div
+-        style={{
+-          position: "absolute",
+-          top: 2,
+-          left: on ? 22 : 2,
+-          width: 27,
+-          height: 27,
+-          borderRadius: 999,
+-          background: "#FFFFFF",
+-          boxShadow: "0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16)",
+-        }}
+-      />
+-    </div>
+-  );
+-}
+-
+ /** the floating tab bar: a glass capsule above the home indicator, the selected tab tinted */
+ function TabBar({ item, p, s, dark }: { item: Item; p: Palette; s: Sys; dark: boolean }) {
+   const tabs = item.tabs ?? [];
+@@ -267,7 +212,8 @@ export function IosBody({ item, p, w, h, dark, radii }: { item: Item; p: Palette
+       case "toolbar":
+         return <Toolbar item={item} p={p} s={s} h={h} dark={dark} />;
+       default:
+-        return null;
++        if (!isIosKind(item.kind)) return null;
++        return IOS_CHART_KINDS.includes(item.kind) ? <IosChart item={item} p={p} s={s} w={w} h={h} /> : <IosControl item={item} p={p} s={s} w={w} h={h} dark={dark} />;
+     }
+   })();
+   return <div style={{ position: "relative", width: w, height: h, fontFamily: FONT, boxSizing: "border-box" }}>{body}</div>;
+diff --git a/components/M3Node.tsx b/components/M3Node.tsx
+index 797b91c..1e9713b 100644
+--- a/components/M3Node.tsx
++++ b/components/M3Node.tsx
+@@ -71,6 +71,8 @@ import { CarouselBody, DatePickerBody, TimePickerBody } from "./Pickers";
+ import { t, useLang } from "@/lib/i18n";
+ import { useTheme } from "@/lib/theme";
+ import { usePlatform } from "@/lib/platform";
++import { glyphOf } from "@/lib/sfsymbols";
++import { IOS_ONLY_KINDS } from "@/lib/tokens";
+ import { IosBody, takesIosSkin } from "./IosNode";
+ import { railSelectedLabelColor } from "@/lib/color";
+ 
+@@ -93,21 +95,23 @@ export function Icon({
+   fill?: boolean;
+   weight?: number;
+ }) {
++  /* an SF Symbol name ("sf:…") is drawn through its Material stand-in */
++  const sf = glyphOf(name);
+   return (
+     <span
+       className="msr"
+       /* the ligature is a picture, not words: a screen reader should not spell out its name */
+       aria-hidden
+-      data-fill={fill ? "1" : "0"}
++      data-fill={fill || sf.fill ? "1" : "0"}
+       style={{
+         fontSize: size,
+         color,
+         fontVariationSettings: weight
+-          ? `"FILL" ${fill ? 1 : 0}, "wght" ${weight}, "GRAD" 0, "opsz" 24`
++          ? `"FILL" ${fill || sf.fill ? 1 : 0}, "wght" ${weight}, "GRAD" 0, "opsz" 24`
+           : undefined,
+       }}
+     >
+-      {name}
++      {sf.glyph}
+     </span>
+   );
+ }
+@@ -1876,7 +1880,7 @@ export function M3Node({
+     : ripples.list;
+ 
+   /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
+-  if (platform === "ios" && takesIosSkin(drawn))
++  if (takesIosSkin(drawn) && (platform === "ios" || IOS_ONLY_KINDS.includes(drawn.kind)))
+     return (
+       <div
+         data-node={item.id}
+@@ -1984,7 +1988,7 @@ export function M3Static({
+   const r = radii ?? baseRadii(item);
+   const size = sizeOf(item, {});
+   const measured = isMeasured(item);
+-  if (platform === "ios" && takesIosSkin(item))
++  if (takesIosSkin(item) && (platform === "ios" || IOS_ONLY_KINDS.includes(item.kind)))
+     return (
+       <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
+         <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />
+diff --git a/components/PartInspector.tsx b/components/PartInspector.tsx
+index 66250cb..955e8ae 100644
+--- a/components/PartInspector.tsx
++++ b/components/PartInspector.tsx
+@@ -46,6 +46,7 @@ import {
+   timeLayoutOf,
+   topBarHeightOf,
+ } from "@/lib/tokens";
++import { IOS_ONLY_KINDS } from "@/lib/tokens";
+ import { Field, ImageRow, NamedSizes, PanelShell, RUN_CELL, Section, Segmented, Slider, Toggle } from "./ui";
+ import { CardStage } from "./CardStage";
+ import { arcPath, wavePath } from "./Loading";
+@@ -509,6 +510,27 @@ export function PartInspector({
+         </Section>
+       )}
+ 
++      {/* ---------- iOS-only parts: their words and their entries ---------- */}
++      {IOS_ONLY_KINDS.includes(kind) && (spec.hasLabel || spec.hasIcon) && (
++        <Section id="part-text" icon="short_text" title={t("text", lang)} p={p}>
++          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
++            {spec.hasIcon ? (
++              <IconRow slots={iconSlots} onPick={(key, icon) => onChange(setIconSlot(item, key, icon))} p={p}>
++                <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
++              </IconRow>
++            ) : (
++              spec.hasLabel && <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} />
++            )}
++            {spec.hasSupporting && <Field value={item.supporting ?? ""} onChange={(supporting) => onChange({ supporting })} placeholder={t("supporting", lang)} p={p} multiline rows={2} grow maxHeight={140} />}
++          </div>
++        </Section>
++      )}
++      {IOS_ONLY_KINDS.includes(kind) && spec.hasTabs && (
++        <Section id="part-entries" icon="list" title={t("options", lang)} p={p}>
++          <EntryList item={item} onChange={onChange} p={p} icons={kind === "menu"} selectable={kind === "wheelPicker" || kind === "pageControl"} />
++        </Section>
++      )}
++
+       {/* ---------- entries ---------- */}
+       {(kind === "bottomNav" || kind === "navRail" || kind === "tabs" || kind === "select") && (
+         <Section id="part-entries" icon={kind === "select" ? "list" : "view_column"} title={t(kind === "select" ? "options" : "tabs", lang)} p={p}>
+@@ -650,7 +672,7 @@ export function PartInspector({
+           <ProgressValue item={item} onChange={onChange} p={p} />
+         </Section>
+       )}
+-      {kind === "slider" && (
++      {(kind === "slider" || kind === "gauge") && (
+         <Section id="part-state" icon="tune" title={t("state", lang)} p={p}>
+           <Slider icon="percent" title={t("progressState", lang)} value={item.value ?? SLIDER_DEFAULT_VALUE} min={0} max={100} step={1} onChange={(value) => onChange({ value })} p={p} unit="%" />
+         </Section>
+diff --git a/components/PartsPalette.tsx b/components/PartsPalette.tsx
+index 1f0722d..979d4a5 100644
+--- a/components/PartsPalette.tsx
++++ b/components/PartsPalette.tsx
+@@ -1,15 +1,16 @@
+ "use client";
+ 
+ import { useMemo, useState } from "react";
+-import { CATEGORIES, KIND_ORDER, KIND_SPEC, PALETTE_HIDDEN, Category, Kind, Palette } from "@/lib/tokens";
++import { CATEGORIES, IOS_ONLY_KINDS, KIND_ORDER, KIND_SPEC, PALETTE_HIDDEN, Category, Kind, Palette } from "@/lib/tokens";
++import { usePlatform } from "@/lib/platform";
+ import { Icon } from "./M3Node";
+ import { KIND_TEXT, t, useLang } from "@/lib/i18n";
+ import { Field, Section, Tile } from "./ui";
+ 
+ const CATEGORY_TEXT = {
+-  ja: { actions: "操作", navigation: "ナビゲーション", containment: "コンテナ", inputs: "入力", content: "コンテンツ", progress: "進捗" },
+-  zh: { actions: "操作", navigation: "导航", containment: "容器", inputs: "输入", content: "内容", progress: "进度" },
+-  ko: { actions: "동작", navigation: "내비게이션", containment: "컨테이너", inputs: "입력", content: "콘텐츠", progress: "진행 상태" },
++  ja: { actions: "操作", navigation: "ナビゲーション", containment: "コンテナ", inputs: "入力", content: "コンテンツ", progress: "進捗", ios: "iOS", charts: "グラフ" },
++  zh: { actions: "操作", navigation: "导航", containment: "容器", inputs: "输入", content: "内容", progress: "进度", ios: "iOS", charts: "图表" },
++  ko: { actions: "동작", navigation: "내비게이션", containment: "컨테이너", inputs: "입력", content: "콘텐츠", progress: "진행 상태", ios: "iOS", charts: "차트" },
+ } satisfies Record<string, Record<Category, string>>;
+ 
+ export function PartsPalette({
+@@ -27,19 +28,22 @@ export function PartsPalette({
+   onPartActivate: (kind: Kind) => void;
+ }) {
+   const lang = useLang();
++  /* the iOS-only parts are offered while the prompt targets iOS */
++  const ios = usePlatform() === "ios";
++  const offered = (k: Kind) => !PALETTE_HIDDEN.includes(k) && (ios || !IOS_ONLY_KINDS.includes(k));
+   const [q, setQ] = useState("");
+   const labelOf = (k: Kind) => (lang === "en" ? KIND_SPEC[k].label : (KIND_TEXT[lang][k]?.noun ?? KIND_SPEC[k].label));
+ 
+   const filtered = useMemo(() => {
+     const s = q.trim().toLowerCase();
+     /* the shapes a part switches into in its own panel are not tiles of their own */
+-    const listed = KIND_ORDER.filter((k) => !PALETTE_HIDDEN.includes(k));
++    const listed = KIND_ORDER.filter(offered);
+     if (!s) return listed;
+     return listed.filter((k) => {
+       const sp = KIND_SPEC[k];
+       return labelOf(k).toLowerCase().includes(s) || sp.label.toLowerCase().includes(s) || sp.noun.toLowerCase().includes(s) || k.toLowerCase().includes(s);
+     });
+-  }, [q, lang]);
++  }, [q, lang, ios]);
+ 
+   const tile = (k: Kind) => {
+     const s = KIND_SPEC[k];
+@@ -86,9 +90,9 @@ export function PartsPalette({
+             )}
+           </div>
+         ) : (
+-          CATEGORIES.map((c) => (
++          CATEGORIES.filter((c) => ios || (c.key !== "ios" && c.key !== "charts")).map((c) => (
+             <Section key={c.key} id={`cat:${c.key}`} icon={c.icon} title={lang === "en" ? c.label : CATEGORY_TEXT[lang][c.key]} p={p}>
+-              <div style={grid}>{KIND_ORDER.filter((k) => KIND_SPEC[k].category === c.key && !PALETTE_HIDDEN.includes(k)).map(tile)}</div>
++              <div style={grid}>{KIND_ORDER.filter((k) => KIND_SPEC[k].category === c.key && offered(k)).map(tile)}</div>
+             </Section>
+           ))
+         )}
+diff --git a/components/SfSymbolPicker.tsx b/components/SfSymbolPicker.tsx
+new file mode 100644
+index 0000000..a58b45b
+--- /dev/null
++++ b/components/SfSymbolPicker.tsx
+@@ -0,0 +1,69 @@
++"use client";
++
++import { useState } from "react";
++import { t, useLang } from "@/lib/i18n";
++import { Palette } from "@/lib/tokens";
++import { SF_PREFIX, glyphOf, isSf, looksLikeSfName, searchSf, sfName } from "@/lib/sfsymbols";
++
++/** The SF Symbols grid the icon picker shows on the iOS target. It stores "sf:<name>"; each tile
++ *  shows the Material stand-in the canvas draws, and the symbol's real name on hover and in the
++ *  search line. A name typed that is not in the catalog can be used as it is. */
++export function SfSymbolGrid({ value, onChange, palette }: { value: string | null; onChange: (icon: string | null) => void; palette: Palette }) {
++  const lang = useLang();
++  const [q, setQ] = useState("");
++  const typed = q.trim().toLowerCase();
++  const found = searchSf(typed);
++  const custom = typed && looksLikeSfName(typed) && !found.some((s) => s.name === typed) ? typed : null;
++  const tile = (name: string) => {
++    const icon = SF_PREFIX + name;
++    const on = value === icon;
++    const g = glyphOf(icon);
++    return (
++      <button
++        key={name}
++        title={name}
++        aria-label={name}
++        aria-pressed={on}
++        onClick={() => onChange(icon)}
++        style={{ aspectRatio: "1", minWidth: 0, display: "grid", placeItems: "center", borderRadius: 12, border: "none", cursor: "pointer", background: on ? palette.primary : "transparent", color: on ? palette.onPrimary : palette.onSurfaceVariant }}
++      >
++        <span className="msr" data-fill={g.fill ? "1" : "0"} style={{ fontSize: 22 }}>
++          {g.glyph}
++        </span>
++      </button>
++    );
++  };
++  return (
++    <div className="no-scrollbar" style={{ height: 292, overflowY: "auto", overflowX: "hidden", borderRadius: 16, background: palette.surfaceContainerLow }}>
++      <div style={{ position: "sticky", top: 0, zIndex: 1, display: "flex", alignItems: "center", gap: 8, height: 44, padding: "0 14px", background: palette.surfaceContainerLow }}>
++        <input
++          aria-label={t("searchIcons", lang)}
++          autoFocus
++          value={q}
++          onChange={(e) => setQ(e.target.value)}
++          placeholder="SF Symbols"
++          style={{ flex: 1, minWidth: 0, height: 40, border: "none", outline: "none", background: "transparent", color: palette.onSurface, fontSize: 14, fontFamily: "inherit" }}
++        />
++        {isSf(value) && <span style={{ fontSize: 12, color: palette.onSurfaceVariant, whiteSpace: "nowrap" }}>{sfName(value)}</span>}
++      </div>
++      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(42px, 1fr))", gap: 4, padding: 6, alignContent: "start" }}>
++        {!typed && (
++          <button
++            title={t("noIcon", lang)}
++            aria-label={t("noIcon", lang)}
++            aria-pressed={value === null}
++            onClick={() => onChange(null)}
++            style={{ aspectRatio: "1", minWidth: 0, display: "grid", placeItems: "center", borderRadius: 12, cursor: "pointer", border: `1.5px dashed ${value === null ? "transparent" : palette.outline}`, background: value === null ? palette.primary : "transparent", color: value === null ? palette.onPrimary : palette.onSurfaceVariant }}
++          >
++            <svg width={22} height={22} viewBox="0 0 22 22" aria-hidden>
++              <circle cx={11} cy={11} r={8} fill="none" stroke="currentColor" strokeWidth={1.6} />
++              <line x1={5.3} y1={5.3} x2={16.7} y2={16.7} stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
++            </svg>
++          </button>
++        )}
++        {custom && tile(custom)}
++        {found.map((s) => tile(s.name))}
++      </div>
++    </div>
++  );
++}
+diff --git a/components/iosStyle.tsx b/components/iosStyle.tsx
+new file mode 100644
+index 0000000..9b7441c
+--- /dev/null
++++ b/components/iosStyle.tsx
+@@ -0,0 +1,88 @@
++"use client";
++
++import type { CSSProperties } from "react";
++import type { Palette } from "../lib/tokens";
++import { glyphOf } from "../lib/sfsymbols";
++
++/* What every iOS drawing on the canvas shares: the system font, the system colors, an
++ * approximation of Liquid Glass, and icons that accept SF Symbol names. */
++
++export const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif";
++
++/** the iOS system colors the skin needs, for the light or the dark canvas */
++export function sys(dark: boolean) {
++  return {
++    label: dark ? "#FFFFFF" : "#000000",
++    secondary: dark ? "rgba(235,235,245,0.6)" : "rgba(60,60,67,0.6)",
++    tertiary: dark ? "rgba(235,235,245,0.3)" : "rgba(60,60,67,0.3)",
++    fill: dark ? "rgba(118,118,128,0.24)" : "rgba(118,118,128,0.12)",
++    track: dark ? "rgba(120,120,128,0.32)" : "rgba(120,120,128,0.2)",
++    separator: dark ? "rgba(84,84,88,0.6)" : "rgba(60,60,67,0.29)",
++    row: dark ? "#1C1C1E" : "#FFFFFF",
++    knob: dark ? "#636366" : "#FFFFFF",
++    red: dark ? "#FF453A" : "#FF3B30",
++  };
++}
++export type Sys = ReturnType<typeof sys>;
++
++/** Liquid Glass, approximated: a translucent fill that blurs what is behind it, a light rim and a soft shadow */
++export function glass(dark: boolean, lifted: boolean): CSSProperties {
++  return {
++    background: dark ? "rgba(44,44,46,0.72)" : "rgba(255,255,255,0.72)",
++    backdropFilter: "blur(20px) saturate(180%)",
++    WebkitBackdropFilter: "blur(20px) saturate(180%)",
++    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.6)"}`,
++    boxShadow: lifted ? "0 8px 24px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.12)",
++    boxSizing: "border-box",
++  };
++}
++
++export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
++export const oneLine: CSSProperties = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
++export const center: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center" };
++
++/** an icon: a Material Symbols name, or an SF Symbol ("sf:…") drawn through its Material stand-in */
++export function Glyph({ name, size, color, fill }: { name: string; size: number; color: string; fill?: boolean }) {
++  const g = glyphOf(name);
++  return (
++    <span className="msr" aria-hidden data-fill={fill || g.fill ? "1" : "0"} style={{ fontSize: size, color, lineHeight: 1 }}>
++      {g.glyph}
++    </span>
++  );
++}
++
++/** the iOS switch: 51×31, the accent color when on */
++export function Switch({ on, p, s }: { on: boolean; p: Palette; s: Sys }) {
++  return (
++    <div style={{ position: "relative", flex: "0 0 auto", width: 51, height: 31, borderRadius: 999, background: on ? p.primary : s.track }}>
++      <div
++        style={{
++          position: "absolute",
++          top: 2,
++          left: on ? 22 : 2,
++          width: 27,
++          height: 27,
++          borderRadius: 999,
++          background: "#FFFFFF",
++          boxShadow: "0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16)",
++        }}
++      />
++    </div>
++  );
++}
++
++/** a grouped-list row: the system row color, 16pt side insets */
++export const rowStyle = (s: Sys): CSSProperties => ({
++  position: "absolute",
++  inset: 0,
++  display: "flex",
++  alignItems: "center",
++  gap: 12,
++  padding: "0 16px",
++  boxSizing: "border-box",
++  background: s.row,
++  borderRadius: 10,
++});
++
++/** words that make a menu item or a sheet action destructive (drawn red, `role: .destructive` in the prompt) */
++export const DESTRUCTIVE = /delete|remove|erase|削除|删除|移除|삭제/i;
+diff --git a/lib/i18n.ts b/lib/i18n.ts
+index cc996c3..81bb0e7 100644
+--- a/lib/i18n.ts
++++ b/lib/i18n.ts
+@@ -1,5 +1,7 @@
+ "use client";
+ 
++import { IOS_KIND_TEXT } from "./iosKinds";
++
+ import { createContext, useContext } from "react";
+ 
+ export type Lang = "ja" | "en" | "zh" | "ko";
+@@ -617,6 +619,7 @@ export const KIND_TEXT: Record<
+     carousel: { noun: "カルーセル" },
+     datePicker: { noun: "日付ピッカー", label: "3月17日（月）" },
+     timePicker: { noun: "時刻ピッカー" },
++    ...IOS_KIND_TEXT.ja,
+   },
+   en: {
+     box: { noun: "box" },
+@@ -655,6 +658,7 @@ export const KIND_TEXT: Record<
+     carousel: { noun: "carousel" },
+     datePicker: { noun: "date picker", label: "Mon, Mar 17" },
+     timePicker: { noun: "time picker" },
++    ...IOS_KIND_TEXT.en,
+   },
+   zh: {
+     box: { noun: "容器框" },
+@@ -693,6 +697,7 @@ export const KIND_TEXT: Record<
+     carousel: { noun: "轮播" },
+     datePicker: { noun: "日期选择器", label: "3月17日 周一" },
+     timePicker: { noun: "时间选择器" },
++    ...IOS_KIND_TEXT.zh,
+   },
+   ko: {
+     box: { noun: "상자" },
+@@ -731,6 +736,7 @@ export const KIND_TEXT: Record<
+     carousel: { noun: "캐러셀" },
+     datePicker: { noun: "날짜 선택기", label: "3월 17일 (월)" },
+     timePicker: { noun: "시간 선택기" },
++    ...IOS_KIND_TEXT.ko,
+   },
+ };
+ 
+diff --git a/lib/iosKinds.test.ts b/lib/iosKinds.test.ts
+new file mode 100644
+index 0000000..db15436
+--- /dev/null
++++ b/lib/iosKinds.test.ts
+@@ -0,0 +1,80 @@
++import { afterEach, describe, expect, it } from "vitest";
++
++import { setGlobalLang, type Lang } from "./i18n";
++import { IOS_ENTRY_BOUNDS, IOS_KINDS } from "./iosKinds";
++import { buildPrompt } from "./prompt";
++import { Doc, ENTRY_BOUNDS, IOS_ONLY_KINDS, Item, KIND_ORDER, KIND_SPEC, makeItem, sizeOf } from "./tokens";
++
++const LANGS: Lang[] = ["ja", "en", "zh", "ko"];
++
++function doc(platform: Doc["platform"], items: Item[]): Doc {
++  return {
++    groups: items.map((it, i) => ({ id: `g${i}`, x: 16, y: 24 + i * 40, axis: "x" as const, items: [it] })),
++    frames: [{ id: "f", name: "Home", x: 0, y: 0 }],
++    paletteKey: "purple",
++    frame: "phone",
++    platform,
++    title: "T",
++    brief: "",
++  };
++}
++
++describe("iOS-only kinds", () => {
++  afterEach(() => setGlobalLang("ja"));
++
++  it("are registered, offered under iOS or Charts, and limited to sensible entry counts", () => {
++    for (const k of IOS_KINDS) {
++      expect(KIND_ORDER).toContain(k);
++      expect(IOS_ONLY_KINDS).toContain(k);
++      expect(["ios", "charts"]).toContain(KIND_SPEC[k].category);
++      const b = IOS_ENTRY_BOUNDS[k];
++      if (b) expect(ENTRY_BOUNDS[k]).toEqual(b);
++    }
++  });
++
++  it.each(LANGS)("start with labels and entries in %s, within their bounds", (lang) => {
++    setGlobalLang(lang);
++    for (const k of IOS_KINDS) {
++      const it = makeItem(k);
++      const b = IOS_ENTRY_BOUNDS[k];
++      if (KIND_SPEC[k].hasTabs) {
++        expect(it.tabs?.length ?? 0).toBeGreaterThan(0);
++        if (b) expect(it.tabs!.length).toBeLessThanOrEqual(b.max);
++      }
++      const { w, h } = sizeOf(it, {});
++      expect(w).toBeGreaterThan(0);
++      expect(h).toBeGreaterThan(0);
++    }
++  });
++
++  it("grow a menu and an action sheet with their entries", () => {
++    const menu = makeItem("menu");
++    expect(sizeOf(menu, {}).h).toBe(12 + 44 * menu.tabs!.length);
++    const sheet = makeItem("actionSheet");
++    expect(sizeOf(sheet, {}).h).toBe(136 + 56 * sheet.tabs!.length);
++  });
++
++  it.each(LANGS)("are described with their words and given a SwiftUI note in %s", (lang) => {
++    setGlobalLang(lang);
++    const items = IOS_KINDS.map((k, i) => ({ ...makeItem(k), id: `p${i}` }));
++    const p = buildPrompt(doc("ios", items), {}, undefined, lang);
++    for (const it of items) if (it.label.trim()) expect(p).toContain(it.label.trim());
++    for (const api of ["Stepper", "ContentUnavailableView", "confirmationDialog", "BarMark", "SectorMark", "AreaMark", "LineMark", "Gauge"]) expect(p).toContain(api);
++    expect(p).not.toContain("sf:");
++  });
++
++  it("passes SF Symbol names through on iOS and maps them to Material elsewhere", () => {
++    setGlobalLang("en");
++    const empty: Item = { ...makeItem("emptyState"), id: "e", icon: "sf:tray" };
++    const row: Item = { ...makeItem("listItem"), id: "r", icon: "sf:heart.fill", icon2: "chevron_right" };
++    const ios = buildPrompt(doc("ios", [empty, row]), {}, undefined, "en");
++    expect(ios).toContain("tray symbol");
++    expect(ios).toContain("heart.fill");
++    expect(ios).toContain("chevron_right → chevron.right");
++    expect(ios).not.toContain("heart.fill →");
++    const android = buildPrompt(doc("android", [empty, row]), {}, undefined, "en");
++    expect(android).toContain("inbox");
++    expect(android).toContain("favorite");
++    expect(android).not.toContain("sf:");
++  });
++});
+diff --git a/lib/iosKinds.ts b/lib/iosKinds.ts
+new file mode 100644
+index 0000000..91d3cb3
+--- /dev/null
++++ b/lib/iosKinds.ts
+@@ -0,0 +1,230 @@
++/**
++ * The parts only the iOS target offers: SwiftUI controls Material has no part for, and
++ * Swift Charts. tokens.ts adds them to Kind, KIND_SPEC, KIND_ORDER, ENTRY_BOUNDS, makeItem
++ * and sizeOf; i18n.ts adds their names. The canvas always draws them in their iOS look
++ * (components/IosControls.tsx, components/IosCharts.tsx).
++ *
++ * This module imports types only, so tokens.ts and i18n.ts can import it without a cycle.
++ */
++import type { Lang } from "./i18n";
++import type { Item, KindSpec, NavTab } from "./tokens";
++
++export const IOS_KINDS = [
++  "sectionHeader",
++  "stepper",
++  "wheelPicker",
++  "colorPicker",
++  "disclosure",
++  "textEditor",
++  "pageControl",
++  "gauge",
++  "menu",
++  "actionSheet",
++  "emptyState",
++  "barChart",
++  "lineChart",
++  "areaChart",
++  "pieChart",
++] as const;
++export type IosKind = (typeof IOS_KINDS)[number];
++export const isIosKind = (k: string): k is IosKind => (IOS_KINDS as readonly string[]).includes(k);
++export const IOS_CHART_KINDS: readonly IosKind[] = ["barChart", "lineChart", "areaChart", "pieChart"];
++
++/** content width inside the phone margins (CONTENT_W in tokens.ts) */
++const W = 380;
++const WIDTH = { min: 200, max: 412, step: 4, icon: "width" };
++
++const spec = (s: Partial<KindSpec> & Pick<KindSpec, "label" | "noun" | "category" | "paletteIcon" | "h">): KindSpec => ({
++  w: W,
++  radius: 10,
++  hasVariant: false,
++  hasLabel: true,
++  hasSupporting: false,
++  hasIcon: false,
++  defLabel: "",
++  defIcon: null,
++  ...s,
++});
++
++export const IOS_KIND_SPEC: Record<IosKind, KindSpec> = {
++  sectionHeader: spec({ label: "Section header", noun: "セクション見出し", category: "ios", paletteIcon: "title", h: 32, radius: 0, size: WIDTH, defSize: W }),
++  stepper: spec({ label: "Stepper", noun: "ステッパー", category: "ios", paletteIcon: "exposure_plus_1", h: 44, hasValue: true, size: WIDTH, defSize: W }),
++  wheelPicker: spec({ label: "Wheel picker", noun: "ホイールピッカー", category: "ios", paletteIcon: "view_day", h: 180, radius: 12, hasTabs: true, size: WIDTH, defSize: W }),
++  colorPicker: spec({ label: "Color picker", noun: "カラーピッカー", category: "ios", paletteIcon: "palette", h: 44, size: WIDTH, defSize: W }),
++  disclosure: spec({ label: "Disclosure group", noun: "折りたたみ項目", category: "ios", paletteIcon: "expand_circle_down", h: 44, hasSupporting: true, hasChecked: true, defSupporting: "", size: WIDTH, defSize: W }),
++  textEditor: spec({ label: "Text editor", noun: "テキストエディタ", category: "ios", paletteIcon: "notes", h: 140, size: WIDTH, defSize: W }),
++  pageControl: spec({ label: "Page control", noun: "ページコントロール", category: "ios", paletteIcon: "more_horiz", w: 160, h: 28, radius: 14, hasLabel: false, hasTabs: true }),
++  gauge: spec({ label: "Gauge", noun: "ゲージ", category: "ios", paletteIcon: "speed", w: 88, h: 96, radius: 0, hasValue: true }),
++  menu: spec({ label: "Menu", noun: "メニュー", category: "ios", paletteIcon: "menu_open", w: 250, h: 144, radius: 22, hasTabs: true }),
++  actionSheet: spec({ label: "Action sheet", noun: "アクションシート", category: "ios", paletteIcon: "list_alt", h: 248, radius: 22, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  emptyState: spec({ label: "Empty state", noun: "空の状態", category: "ios", paletteIcon: "inbox", h: 220, radius: 0, hasSupporting: true, hasIcon: true, defSupporting: "", defIcon: "sf:tray", size: WIDTH, defSize: W }),
++  barChart: spec({ label: "Bar chart", noun: "棒グラフ", category: "charts", paletteIcon: "bar_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  lineChart: spec({ label: "Line chart", noun: "折れ線グラフ", category: "charts", paletteIcon: "show_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  areaChart: spec({ label: "Area chart", noun: "面グラフ", category: "charts", paletteIcon: "area_chart", h: 240, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++  pieChart: spec({ label: "Donut chart", noun: "ドーナツグラフ", category: "charts", paletteIcon: "donut_large", h: 260, radius: 16, hasSupporting: true, hasTabs: true, defSupporting: "", size: WIDTH, defSize: W }),
++};
++
++/** how many entries each one may carry */
++export const IOS_ENTRY_BOUNDS: Partial<Record<IosKind, { min: number; max: number }>> = {
++  wheelPicker: { min: 2, max: 12 },
++  pageControl: { min: 2, max: 10 },
++  menu: { min: 1, max: 8 },
++  actionSheet: { min: 1, max: 5 },
++  barChart: { min: 2, max: 12 },
++  lineChart: { min: 2, max: 12 },
++  areaChart: { min: 2, max: 12 },
++  pieChart: { min: 2, max: 8 },
++};
++
++type KindText = { noun: string; label?: string; supporting?: string };
++
++export const IOS_KIND_TEXT: Record<Lang, Record<IosKind, KindText>> = {
++  ja: {
++    sectionHeader: { noun: "セクション見出し", label: "一般" },
++    stepper: { noun: "ステッパー", label: "数量" },
++    wheelPicker: { noun: "ホイールピッカー", label: "時間（分）" },
++    colorPicker: { noun: "カラーピッカー", label: "テーマカラー" },
++    disclosure: { noun: "折りたたみ項目", label: "詳細設定", supporting: "通知、プライバシー" },
++    textEditor: { noun: "テキストエディタ", label: "メモ" },
++    pageControl: { noun: "ページコントロール" },
++    gauge: { noun: "ゲージ", label: "バッテリー" },
++    menu: { noun: "メニュー", label: "並べ替え" },
++    actionSheet: { noun: "アクションシート", label: "このメモを削除しますか？", supporting: "この操作は取り消せません。" },
++    emptyState: { noun: "空の状態", label: "メモがありません", supporting: "右上の＋から新しいメモを作成できます。" },
++    barChart: { noun: "棒グラフ", label: "歩数", supporting: "過去 7 日" },
++    lineChart: { noun: "折れ線グラフ", label: "体重", supporting: "過去 7 日" },
++    areaChart: { noun: "面グラフ", label: "睡眠", supporting: "過去 7 日" },
++    pieChart: { noun: "ドーナツグラフ", label: "今月の支出" },
++  },
++  en: {
++    sectionHeader: { noun: "section header", label: "General" },
++    stepper: { noun: "stepper", label: "Quantity" },
++    wheelPicker: { noun: "wheel picker", label: "Minutes" },
++    colorPicker: { noun: "color picker", label: "Accent color" },
++    disclosure: { noun: "disclosure group", label: "Advanced", supporting: "Notifications, Privacy" },
++    textEditor: { noun: "text editor", label: "Notes" },
++    pageControl: { noun: "page control" },
++    gauge: { noun: "gauge", label: "Battery" },
++    menu: { noun: "menu", label: "Sort" },
++    actionSheet: { noun: "action sheet", label: "Delete this note?", supporting: "This can't be undone." },
++    emptyState: { noun: "empty state", label: "No Notes", supporting: "Tap + to create your first note." },
++    barChart: { noun: "bar chart", label: "Steps", supporting: "Last 7 days" },
++    lineChart: { noun: "line chart", label: "Weight", supporting: "Last 7 days" },
++    areaChart: { noun: "area chart", label: "Sleep", supporting: "Last 7 days" },
++    pieChart: { noun: "donut chart", label: "Spending this month" },
++  },
++  zh: {
++    sectionHeader: { noun: "分组标题", label: "通用" },
++    stepper: { noun: "步进器", label: "数量" },
++    wheelPicker: { noun: "滚轮选择器", label: "时长（分钟）" },
++    colorPicker: { noun: "颜色选择器", label: "主题色" },
++    disclosure: { noun: "折叠组", label: "高级设置", supporting: "通知、隐私" },
++    textEditor: { noun: "多行文本框", label: "备注" },
++    pageControl: { noun: "页面指示器" },
++    gauge: { noun: "仪表", label: "电量" },
++    menu: { noun: "下拉菜单", label: "排序" },
++    actionSheet: { noun: "操作表", label: "删除这条备注？", supporting: "此操作无法撤销。" },
++    emptyState: { noun: "空状态", label: "还没有备注", supporting: "点按右上角的 + 新建备注。" },
++    barChart: { noun: "柱状图", label: "步数", supporting: "最近 7 天" },
++    lineChart: { noun: "折线图", label: "体重", supporting: "最近 7 天" },
++    areaChart: { noun: "面积图", label: "睡眠", supporting: "最近 7 天" },
++    pieChart: { noun: "环形图", label: "本月支出" },
++  },
++  ko: {
++    sectionHeader: { noun: "섹션 제목", label: "일반" },
++    stepper: { noun: "스테퍼", label: "수량" },
++    wheelPicker: { noun: "휠 피커", label: "시간(분)" },
++    colorPicker: { noun: "색상 선택기", label: "강조 색상" },
++    disclosure: { noun: "펼침 그룹", label: "고급 설정", supporting: "알림, 개인정보" },
++    textEditor: { noun: "텍스트 편집기", label: "메모" },
++    pageControl: { noun: "페이지 컨트롤" },
++    gauge: { noun: "게이지", label: "배터리" },
++    menu: { noun: "메뉴", label: "정렬" },
++    actionSheet: { noun: "액션 시트", label: "이 메모를 삭제할까요?", supporting: "이 작업은 되돌릴 수 없습니다." },
++    emptyState: { noun: "빈 상태", label: "메모 없음", supporting: "오른쪽 위 +를 눌러 새 메모를 만드세요." },
++    barChart: { noun: "막대 차트", label: "걸음 수", supporting: "최근 7일" },
++    lineChart: { noun: "꺾은선 차트", label: "체중", supporting: "최근 7일" },
++    areaChart: { noun: "영역 차트", label: "수면", supporting: "최근 7일" },
++    pieChart: { noun: "도넛 차트", label: "이번 달 지출" },
++  },
++};
++
++const WEEK: Record<Lang, string[]> = {
++  ja: ["月", "火", "水", "木", "金", "土", "日"],
++  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
++  zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
++  ko: ["월", "화", "수", "목", "금", "토", "일"],
++};
++const SLICES: Record<Lang, string[]> = {
++  ja: ["食費", "交通", "住居", "その他"],
++  en: ["Food", "Transport", "Home", "Other"],
++  zh: ["餐饮", "交通", "住房", "其他"],
++  ko: ["식비", "교통", "주거", "기타"],
++};
++const MENU_ITEMS: Record<Lang, string[]> = {
++  ja: ["日付", "名前", "サイズ"],
++  en: ["Date", "Name", "Size"],
++  zh: ["日期", "名称", "大小"],
++  ko: ["날짜", "이름", "크기"],
++};
++const MENU_ICONS = ["sf:calendar", "sf:textformat", "sf:arrow.up.arrow.down"];
++const ACTIONS: Record<Lang, string[]> = {
++  ja: ["削除", "アーカイブ"],
++  en: ["Delete", "Archive"],
++  zh: ["删除", "归档"],
++  ko: ["삭제", "보관"],
++};
++
++const plain = (labels: string[]): NavTab[] => labels.map((label) => ({ icon: "", label }));
++
++/** the entries a new part of an iOS kind starts with; null for every other kind */
++export function iosDefaultTabs(kind: string, lang: Lang): NavTab[] | null {
++  switch (kind) {
++    case "wheelPicker":
++      return plain(["5", "10", "15", "30", "60"]);
++    case "pageControl":
++      return plain(["1", "2", "3", "4"]);
++    case "menu":
++      return MENU_ITEMS[lang].map((label, i) => ({ icon: MENU_ICONS[i] ?? "", label }));
++    case "actionSheet":
++      return plain(ACTIONS[lang]);
++    case "barChart":
++    case "lineChart":
++    case "areaChart":
++      return plain(WEEK[lang]);
++    case "pieChart":
++      return plain(SLICES[lang]);
++    default:
++      return null;
++  }
++}
++
++/** fills in what makeItem cannot know about an iOS kind */
++export function applyIosDefaults(it: Item, lang: Lang): void {
++  if (!isIosKind(it.kind)) return;
++  const tabs = iosDefaultTabs(it.kind, lang);
++  if (tabs) it.tabs = tabs;
++  if (it.kind === "gauge") it.value = 72;
++  if (it.kind === "stepper") it.value = 1;
++  if (it.kind === "wheelPicker") it.selected = 2;
++  if (it.kind === "pageControl") it.selected = 0;
++}
++
++/** the box of an iOS kind; null for every other kind. `n` is the width sizeOf worked out. */
++export function iosSizeOf(it: Item, n: number, h: number): { w: number; h: number } | null {
++  if (!isIosKind(it.kind)) return null;
++  const s = IOS_KIND_SPEC[it.kind];
++  const entries = it.tabs?.length ?? 0;
++  switch (it.kind) {
++    case "menu":
++      return { w: s.w, h: 12 + entries * 44 };
++    case "actionSheet":
++      /* the title and message, one row per action, the gap and Cancel */
++      return { w: n, h: 136 + entries * 56 };
++    case "gauge":
++    case "pageControl":
++      return { w: s.w, h };
++    default:
++      return { w: n, h };
++  }
++}
+diff --git a/lib/prompt-baseline.test.ts b/lib/prompt-baseline.test.ts
+index c86391d..1c7c06b 100644
+--- a/lib/prompt-baseline.test.ts
++++ b/lib/prompt-baseline.test.ts
+@@ -7,13 +7,20 @@ import { afterEach, describe, expect, it } from "vitest";
+ 
+ import { Lang, setGlobalLang } from "./i18n";
+ import { buildPrompt } from "./prompt";
+-import { Doc, Item, KIND_ORDER, makeItem } from "./tokens";
++import { Doc, Item, Kind, makeItem } from "./tokens";
++
++/* the 36 kinds that existed when the baseline was taken; kinds added later are covered by their own tests */
++const BASE_KINDS: Kind[] = [
++  "button", "iconButton", "fab", "extendedFab", "splitButton", "fabMenu", "chip", "topAppBar", "bottomNav", "navRail", "toolbar", "tabs",
++  "searchBar", "card", "listItem", "box", "bottomSheet", "dialog", "snackbar", "textField", "select", "switch", "checkbox", "radio",
++  "slider", "datePicker", "timePicker", "text", "image", "carousel", "camera", "map", "divider", "loadingIndicator", "linearProgress", "circularProgress",
++];
+ 
+ const LANGS: Lang[] = ["ja", "en", "zh", "ko"];
+ 
+ /* one part of every kind, each in its own group, stacked down one phone screen */
+ function everyKind(platform: "android" | "web"): Doc {
+-  const items: Item[] = KIND_ORDER.map((kind, i) => ({ ...makeItem(kind), id: `p${i}` }));
++  const items: Item[] = BASE_KINDS.map((kind, i) => ({ ...makeItem(kind), id: `p${i}` }));
+   return {
+     groups: items.map((it, i) => ({ id: `g${i}`, x: 16, y: 24 + i * 24, axis: "x" as const, items: [it] })),
+     frames: [{ id: "f-home", name: "Home", x: 0, y: 0 }],
+diff --git a/lib/prompt-ios.ts b/lib/prompt-ios.ts
+index 572b917..8e46270 100644
+--- a/lib/prompt-ios.ts
++++ b/lib/prompt-ios.ts
+@@ -11,6 +11,7 @@
+  */
+ import type { Lang } from "./i18n";
+ import type { Item, Kind, Platform, Theme } from "./tokens";
++import { isIosKind } from "./iosKinds";
+ 
+ /** mirrors the private Viewport type in prompt.ts */
+ export type ViewportIos = "phone" | "desktop" | "mixed" | "free";
+@@ -224,6 +225,21 @@ const STYLE_NOTES_IOS: {
+     carousel: "Carousel → `ScrollView(.horizontal) { LazyHStack(spacing: 8) { cards }.scrollTargetLayout() }` with `.scrollTargetBehavior(.viewAligned)`, `.contentMargins(.horizontal, 16)` and `.scrollIndicators(.hidden)`; cards have 20pt continuous corners and the title on a bottom gradient. Multi-browse and hero → cards sized with `.containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }`; uncontained → one fixed width; full-screen → `.containerRelativeFrame(.horizontal)` with `.scrollTargetBehavior(.paging)`.",
+     datePicker: "Date picker → `DatePicker(label, selection:, displayedComponents: .date)`: modal → `.datePickerStyle(.graphical)` inside a `.sheet`; docked → `.graphical` inline; input only → `.compact`. Do not build a custom calendar grid.",
+     timePicker: "Time picker → `DatePicker(label, selection:, displayedComponents: .hourAndMinute)`: dial → `.datePickerStyle(.wheel)`; input → `.compact`. AM/PM follows the user's locale.",
++    sectionHeader: "Section header → the header of a `Section` in a `List` or `Form`: `Section { rows } header: { Text(title) }`. The parts below it, up to the next section header, are that section's rows.",
++    stepper: "Stepper → SwiftUI `Stepper` with the label and the current value in its title, for example `Stepper(\"Quantity: \\(quantity)\", value: $quantity, in: 1...99)`, as a `Form` or `List` row.",
++    wheelPicker: "Wheel picker → `Picker(label, selection:) { ForEach(options) { Text($0).tag($0) } }` with `.pickerStyle(.wheel)`, starting on the selected option; inside a `Form`, give it a section of its own.",
++    colorPicker: "Color picker → `ColorPicker(label, selection: $color, supportsOpacity: false)` as a `Form` or `List` row; keep the chosen color in the model so it persists.",
++    disclosure: "Disclosure group → `DisclosureGroup(label, isExpanded: $isExpanded) { content }` in a `List` or `Form`; the content is the rows its supporting text names. The system draws the chevron and animates the expansion.",
++    textEditor: "Text editor → `TextField(placeholder, text: $text, axis: .vertical)` with `.lineLimit(5, reservesSpace: true)` in a `Form` section (a `TextEditor` with a placeholder overlay for long text). Put a Done button in `.toolbar { ToolbarItemGroup(placement: .keyboard) { … } }`.",
++    pageControl: "Page control → the pages are a `TabView` with `.tabViewStyle(.page(indexDisplayMode: .always))` and `.indexViewStyle(.page(backgroundDisplayMode: .interactive))`, one page per entry, starting on the current page. Do not draw the dots yourself.",
++    gauge: "Gauge → `Gauge(value: v, in: 0...100) { Text(label) } currentValueLabel: { Text(v, format: .number) }` with `.gaugeStyle(.accessoryCircular)` and `.tint(.accentColor)`; use `.accessoryCircularCapacity` for a fill level such as storage or battery.",
++    menu: "Menu → `Menu { Button(item, systemImage: symbol) { } … } label: { Label(title, systemImage: \"ellipsis.circle\") }`, usually as a `ToolbarItem`. The canvas shows it open; the system presents it as a Liquid Glass menu that morphs out of its button. A Delete or Remove item gets `role: .destructive` and goes last, after a `Divider()`.",
++    actionSheet: "Action sheet → `.confirmationDialog(title, isPresented: $isPresented, titleVisibility: .visible) { Button(action) { } … } message: { Text(message) }`; a Delete or Remove action gets `role: .destructive`, and the system adds Cancel. Attach it to the button that opens it so iOS 26 can anchor it to its source.",
++    emptyState: "Empty state → `ContentUnavailableView(title, systemImage: symbol, description: Text(description))`, shown in place of the list or grid while it has no items; add `actions:` with a button when the description names one. Empty search results use `ContentUnavailableView.search(text:)`.",
++    barChart: "Bar chart → Swift Charts (`import Charts`): `Chart(data) { BarMark(x: .value(\"Category\", $0.label), y: .value(\"Value\", $0.value)) }` with `.foregroundStyle(.tint)`, in a card or `Section` under the title and subtitle; the categories are the bar labels. The data comes from the app's model, never sample values; show an empty state while there is none. Keep the system axes and give the marks `.accessibilityLabel` and `.accessibilityValue`.",
++    lineChart: "Line chart → Swift Charts: a `LineMark(x:, y:)` with `.interpolationMethod(.catmullRom)` and a `PointMark` per value, `.foregroundStyle(.tint)`; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
++    areaChart: "Area chart → Swift Charts: an `AreaMark(x:, y:)` filled with `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` and a `LineMark` on the same values; the x axis shows the categories. The data, empty-state and accessibility rules of the bar chart apply.",
++    pieChart: "Donut chart → Swift Charts: `SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)` with `.cornerRadius(4)` and `.foregroundStyle(by: .value(\"Category\", $0.label))`, plus `.chartLegend(position: .bottom)`; the slices are the categories. The data, empty-state and accessibility rules of the bar chart apply.",
+   },
+   zh: {
+     box: "容器框 → 普通容器：用 `RoundedRectangle(cornerRadius:style: .continuous)` 按对照表的颜色填充，圆角取屏幕结构中给出的值，作为叠放在其上的组件的背景（ZStack，后写的在前面）。它没有自身行为，也不用 Liquid Glass。",
+@@ -262,6 +278,21 @@ const STYLE_NOTES_IOS: {
+     carousel: "轮播 → `ScrollView(.horizontal) { LazyHStack(spacing: 8) { cards }.scrollTargetLayout() }`，加 `.scrollTargetBehavior(.viewAligned)`、`.contentMargins(.horizontal, 16)` 和 `.scrollIndicators(.hidden)`；卡片为 20pt 连续圆角，标题放在底部渐变上。多项浏览和主图（hero）→ 卡片宽度用 `.containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }`；不受限（uncontained）→ 固定宽度；全屏 → `.containerRelativeFrame(.horizontal)` 加 `.scrollTargetBehavior(.paging)`。",
+     datePicker: "日期选择器 → `DatePicker(label, selection:, displayedComponents: .date)`：模态 → 放在 `.sheet` 里的 `.datePickerStyle(.graphical)`；停靠 → 内嵌的 `.graphical`；仅输入框 → `.compact`。不要自己做日历网格。",
+     timePicker: "时间选择器 → `DatePicker(label, selection:, displayedComponents: .hourAndMinute)`：表盘 → `.datePickerStyle(.wheel)`；输入 → `.compact`。上午/下午按用户的地区设置显示。",
++    sectionHeader: "分组标题 → `List` 或 `Form` 中 `Section` 的标题：`Section { rows } header: { Text(title) }`。它下面直到下一个分组标题之前的组件，都是这个分组的行。",
++    stepper: "步进器 → SwiftUI `Stepper`，标题中同时显示标签和当前值，例如 `Stepper(\"数量：\\(quantity)\", value: $quantity, in: 1...99)`，作为 `Form` 或 `List` 的一行。",
++    wheelPicker: "滚轮选择器 → `Picker(label, selection:) { ForEach(options) { Text($0).tag($0) } }`，加 `.pickerStyle(.wheel)`，初始停在选中的选项；放在 `Form` 里时单独占一个 section。",
++    colorPicker: "颜色选择器 → `ColorPicker(label, selection: $color, supportsOpacity: false)`，作为 `Form` 或 `List` 的一行；把选中的颜色保存在模型里，重启后保留。",
++    disclosure: "折叠组 → `List` 或 `Form` 中的 `DisclosureGroup(label, isExpanded: $isExpanded) { content }`；content 是辅助文字所列的那些行。箭头和展开动画由系统负责。",
++    textEditor: "多行文本框 → `Form` section 中的 `TextField(placeholder, text: $text, axis: .vertical)`，加 `.lineLimit(5, reservesSpace: true)`（长文本用带占位提示叠层的 `TextEditor`）。在 `.toolbar { ToolbarItemGroup(placement: .keyboard) { … } }` 中放一个「完成」按钮。",
++    pageControl: "页面指示器 → 页面用 `TabView` 加 `.tabViewStyle(.page(indexDisplayMode: .always))` 和 `.indexViewStyle(.page(backgroundDisplayMode: .interactive))`，每个条目一页，初始停在当前页。不要自己画圆点。",
++    gauge: "仪表 → `Gauge(value: v, in: 0...100) { Text(label) } currentValueLabel: { Text(v, format: .number) }`，加 `.gaugeStyle(.accessoryCircular)` 和 `.tint(.accentColor)`；表示存储空间、电量这类填充程度时用 `.accessoryCircularCapacity`。",
++    menu: "下拉菜单 → `Menu { Button(item, systemImage: symbol) { } … } label: { Label(title, systemImage: \"ellipsis.circle\") }`，通常放在 `ToolbarItem` 中。画布上画的是展开状态；系统会把它显示为从按钮中展开的 Liquid Glass 菜单。「删除」「移除」类菜单项加 `role: .destructive`，放在最后，前面加 `Divider()`。",
++    actionSheet: "操作表 → `.confirmationDialog(title, isPresented: $isPresented, titleVisibility: .visible) { Button(action) { } … } message: { Text(message) }`；「删除」「移除」类操作加 `role: .destructive`，「取消」由系统添加。把它挂在触发它的按钮上，让 iOS 26 能锚定到来源位置。",
++    emptyState: "空状态 → `ContentUnavailableView(title, systemImage: symbol, description: Text(description))`，列表或网格没有内容时显示在原位置；说明里提到操作时，用 `actions:` 加一个按钮。搜索无结果时用 `ContentUnavailableView.search(text:)`。",
++    barChart: "柱状图 → Swift Charts（`import Charts`）：`Chart(data) { BarMark(x: .value(\"Category\", $0.label), y: .value(\"Value\", $0.value)) }`，加 `.foregroundStyle(.tint)`，放在标题和副标题下方的卡片或 `Section` 中；分类就是各柱的标签。数据来自应用的模型，不要用示例数值；没有数据时显示空状态。保留系统坐标轴，并给各个 mark 加 `.accessibilityLabel` 和 `.accessibilityValue`。",
++    lineChart: "折线图 → Swift Charts：`LineMark(x:, y:)` 加 `.interpolationMethod(.catmullRom)`，每个值再加一个 `PointMark`，`.foregroundStyle(.tint)`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
++    areaChart: "面积图 → Swift Charts：`AreaMark(x:, y:)` 用 `LinearGradient(colors: [.accentColor.opacity(0.4), .accentColor.opacity(0.05)], startPoint: .top, endPoint: .bottom)` 填充，同样的数据上再叠一条 `LineMark`；横轴显示各分类。数据、空状态和辅助功能的要求与柱状图相同。",
++    pieChart: "环形图 → Swift Charts：`SectorMark(angle: .value(\"Amount\", $0.value), innerRadius: .ratio(0.618), angularInset: 1.5)`，加 `.cornerRadius(4)` 和 `.foregroundStyle(by: .value(\"Category\", $0.label))`，再加 `.chartLegend(position: .bottom)`；各扇区就是各分类。数据、空状态和辅助功能的要求与柱状图相同。",
+   },
+   ja: {},
+   ko: {},
+@@ -287,7 +318,7 @@ const GENERAL_EN = [
+   "Spacing: use the system padding (`.padding()` is 16pt) and the margins that List, Form and NavigationStack provide. Parts described as \"in one row\" share a single HStack and never wrap; parts \"layered inside\" a container go in a ZStack (or `.overlay`) over that container, later items in front.",
+   "Navigation: one NavigationStack per tab with value-based `navigationDestination(for:)`. Map the transitions in \"Behavior and navigation\": a slide in from the right, left or top → a normal push; a slide in from the bottom → `.sheet` (`.fullScreenCover` for a full-screen flow); expand → `.navigationTransition(.zoom(sourceID:in:))` with `.matchedTransitionSource`; fade → `.navigationTransition(.crossFade)` on iOS 27, a normal push on iOS 26; no animation → disable the animation with a `Transaction`. \"Back\" is the system back button and the interactive edge swipe; never disable them. Web links open with `Link` or `openURL`.",
+   "Feedback: system controls provide their own highlight and glass response; a custom tappable view is a `Button` with `.buttonStyle(.plain)` and a `.contentShape`. Add `.sensoryFeedback` for selection changes and completed actions. No ripple effects.",
+-  "Icons: SF Symbols only (`Image(systemName:)`, `Label(_:systemImage:)`). Icon names in this prompt are Material Symbols names: use the SF Symbol from the icon mapping line, otherwise the closest SF Symbol by meaning. TabView fills the selected tab's symbol automatically.",
++  "Icons: SF Symbols only (`Image(systemName:)`, `Label(_:systemImage:)`). Icon names in this prompt are SF Symbol names, except the Material Symbols names in the icon mapping line: use the SF Symbol given there, otherwise the closest SF Symbol by meaning. TabView fills the selected tab's symbol automatically.",
+   "Accessibility: every icon-only button has an `.accessibilityLabel`; hit targets are at least 44×44pt.",
+ ];
+ 
+@@ -306,7 +337,7 @@ const GENERAL_ZH = [
+   "间距使用系统内边距（`.padding()` 为 16pt）以及 List、Form、NavigationStack 自带的边距。写明“横向排成一行”的组件放进同一个 HStack，不换行；写明“内部叠放”的组件放进以该容器为底的 ZStack（或 `.overlay`），后写的在前面。",
+   "导航：每个标签一个 NavigationStack，使用基于值的 `navigationDestination(for:)`。「行为与屏幕跳转」中的过渡按下面对应：从右、左或上滑入 → 普通 push；从下滑入 → `.sheet`（全屏流程用 `.fullScreenCover`）；放大 → `.navigationTransition(.zoom(sourceID:in:))` 配合 `.matchedTransitionSource`；淡入淡出 → iOS 27 用 `.navigationTransition(.crossFade)`，iOS 26 用普通 push；无动画 → 用 `Transaction` 关闭动画。“返回”就是系统返回按钮和边缘轻扫手势，不要禁用。网页链接用 `Link` 或 `openURL` 打开。",
+   "反馈：系统控件自带高亮和玻璃反馈；自定义的可点击视图用加了 `.buttonStyle(.plain)` 和 `.contentShape` 的 `Button`。选择变化和操作完成时加 `.sensoryFeedback`。不要做涟漪效果。",
+-  "图标只用 SF Symbols（`Image(systemName:)`、`Label(_:systemImage:)`）。本提示词中的图标名是 Material Symbols 名称：图标对照里有的用对照结果，没有的选含义最接近的 SF Symbol。TabView 会自动把选中标签的符号变成填充样式。",
++  "图标只用 SF Symbols（`Image(systemName:)`、`Label(_:systemImage:)`）。本提示词中的图标名是 SF Symbol 名称，图标对照这一行列出的除外，那些是 Material Symbols 名称：对照里有的用对照结果，没有的选含义最接近的 SF Symbol。TabView 会自动把选中标签的符号变成填充样式。",
+   "辅助功能：每个只有图标的按钮都要有 `.accessibilityLabel`；点击区域不小于 44×44pt。",
+ ];
+ 
+@@ -371,7 +402,8 @@ function iconsOf(items: Item[]): string[] {
+   const seen: string[] = [];
+   const add = (name?: string | null) => {
+     const v = name?.trim();
+-    if (v && !seen.includes(v)) seen.push(v);
++    /* SF Symbol names ("sf:…") need no mapping */
++    if (v && !v.startsWith("sf:") && !seen.includes(v)) seen.push(v);
+   };
+   for (const it of items) {
+     add(it.icon);
+@@ -397,3 +429,103 @@ export function iconLineIos(items: Item[], lang: Lang): string {
+ 
+ /** iOS measures in points: every "56dp" or "16 sp" in the finished prompt becomes "56pt" / "16pt" */
+ export const toPointsIos = (text: string): string => text.replace(/(\d) ?[ds]p\b/g, "$1pt");
++
++/* ---------- the iOS-only parts in the layout ---------- */
++
++type Said = { q: (s: string) => string; label: string; sup: string; list: string; items: string; n: number; page: number; chosen: string; value: number; open: boolean; icon: string };
++
++const IOS_ITEM_TEXT: Record<Lang, Record<string, (c: Said) => string>> = {
++  en: {
++    sectionHeader: (c) => `a section header ${c.q(c.label)}; the parts below it, up to the next section header, are its rows`,
++    stepper: (c) => `a stepper ${c.q(c.label)} (value ${c.value})`,
++    wheelPicker: (c) => `a wheel picker${c.label ? ` ${c.q(c.label)}` : ""} with the options ${c.list}; ${c.chosen} is selected`,
++    colorPicker: (c) => `a color picker row ${c.q(c.label)}`,
++    disclosure: (c) => `a disclosure group ${c.q(c.label)}, ${c.open ? "expanded" : "collapsed"}${c.sup ? `, revealing ${c.q(c.sup)}` : ""}`,
++    textEditor: (c) => `a multi-line text editor with the placeholder ${c.q(c.label)}`,
++    pageControl: (c) => `a page control for ${c.n} pages (${c.list}); page ${c.page} is current`,
++    gauge: (c) => `a circular gauge ${c.q(c.label)} at ${c.value}%`,
++    menu: (c) => `a pull-down menu ${c.q(c.label)}, drawn open, with the items ${c.items}`,
++    actionSheet: (c) => `an action sheet titled ${c.q(c.label)}${c.sup ? ` with the message ${c.q(c.sup)}` : ""} and the actions ${c.list}, plus Cancel`,
++    emptyState: (c) => `an empty state${c.icon ? ` with the ${c.icon} symbol` : ""}, the title ${c.q(c.label)}${c.sup ? ` and the description ${c.q(c.sup)}` : ""}`,
++    barChart: (c) => `a bar chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} bars: ${c.list}`,
++    lineChart: (c) => `a line chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
++    areaChart: (c) => `an area chart ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} with ${c.n} points along the x axis: ${c.list}`,
++    pieChart: (c) => `a donut chart ${c.q(c.label)} with ${c.n} slices: ${c.list}`,
++  },
++  zh: {
++    sectionHeader: (c) => `分组标题${c.q(c.label)}，它下面直到下一个分组标题之前的组件是这一组的行`,
++    stepper: (c) => `步进器${c.q(c.label)}（当前值 ${c.value}）`,
++    wheelPicker: (c) => `滚轮选择器${c.label ? c.q(c.label) : ""}，选项为 ${c.list}，选中 ${c.chosen}`,
++    colorPicker: (c) => `颜色选择行${c.q(c.label)}`,
++    disclosure: (c) => `折叠组${c.q(c.label)}（${c.open ? "展开" : "收起"}）${c.sup ? `，展开后显示${c.q(c.sup)}` : ""}`,
++    textEditor: (c) => `多行文本框，占位文字为${c.q(c.label)}`,
++    pageControl: (c) => `页面指示器，共 ${c.n} 页（${c.list}），当前为第 ${c.page} 页`,
++    gauge: (c) => `圆形仪表${c.q(c.label)}，数值 ${c.value}%`,
++    menu: (c) => `下拉菜单${c.q(c.label)}（展开状态），菜单项为 ${c.items}`,
++    actionSheet: (c) => `操作表，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}，操作为 ${c.list}，另有“取消”`,
++    emptyState: (c) => `空状态${c.icon ? `（符号 ${c.icon}）` : ""}，标题为${c.q(c.label)}${c.sup ? `，说明为${c.q(c.sup)}` : ""}`,
++    barChart: (c) => `柱状图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，共 ${c.n} 根柱：${c.list}`,
++    lineChart: (c) => `折线图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
++    areaChart: (c) => `面积图${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}，横轴共 ${c.n} 个点：${c.list}`,
++    pieChart: (c) => `环形图${c.q(c.label)}，共 ${c.n} 个扇区：${c.list}`,
++  },
++  ja: {
++    sectionHeader: (c) => `セクション見出し${c.q(c.label)}（次の見出しまでの部品がこのセクションの行）`,
++    stepper: (c) => `ステッパー${c.q(c.label)}（値 ${c.value}）`,
++    wheelPicker: (c) => `ホイールピッカー${c.label ? c.q(c.label) : ""}（選択肢 ${c.list}、${c.chosen}を選択）`,
++    colorPicker: (c) => `カラーピッカーの行${c.q(c.label)}`,
++    disclosure: (c) => `折りたたみ項目${c.q(c.label)}（${c.open ? "展開" : "折りたたみ"}状態${c.sup ? `、開くと${c.q(c.sup)}を表示` : ""}）`,
++    textEditor: (c) => `プレースホルダー${c.q(c.label)}の複数行テキストエディタ`,
++    pageControl: (c) => `${c.n} ページのページコントロール（${c.list}、現在 ${c.page} ページ目）`,
++    gauge: (c) => `円形ゲージ${c.q(c.label)}（${c.value}%）`,
++    menu: (c) => `プルダウンメニュー${c.q(c.label)}（開いた状態、項目 ${c.items}）`,
++    actionSheet: (c) => `アクションシート（タイトル${c.q(c.label)}${c.sup ? `、メッセージ${c.q(c.sup)}` : ""}、アクション ${c.list}、キャンセル付き）`,
++    emptyState: (c) => `空の状態の表示${c.icon ? `（シンボル ${c.icon}）` : ""}（タイトル${c.q(c.label)}${c.sup ? `、説明${c.q(c.sup)}` : ""}）`,
++    barChart: (c) => `棒グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（${c.n} 本：${c.list}）`,
++    lineChart: (c) => `折れ線グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
++    areaChart: (c) => `面グラフ${c.q(c.label)}${c.sup ? `（${c.sup}）` : ""}（横軸 ${c.n} 点：${c.list}）`,
++    pieChart: (c) => `ドーナツグラフ${c.q(c.label)}（${c.n} 区分：${c.list}）`,
++  },
++  ko: {
++    sectionHeader: (c) => `섹션 제목 ${c.q(c.label)} (다음 섹션 제목 전까지의 부품이 이 섹션의 행)`,
++    stepper: (c) => `스테퍼 ${c.q(c.label)} (값 ${c.value})`,
++    wheelPicker: (c) => `휠 피커${c.label ? ` ${c.q(c.label)}` : ""} (옵션 ${c.list}, ${c.chosen} 선택됨)`,
++    colorPicker: (c) => `색상 선택 행 ${c.q(c.label)}`,
++    disclosure: (c) => `펼침 그룹 ${c.q(c.label)} (${c.open ? "펼친" : "접힌"} 상태${c.sup ? `, 펼치면 ${c.q(c.sup)} 표시` : ""})`,
++    textEditor: (c) => `자리표시자가 ${c.q(c.label)}인 여러 줄 텍스트 편집기`,
++    pageControl: (c) => `${c.n}페이지 페이지 컨트롤 (${c.list}, 현재 ${c.page}페이지)`,
++    gauge: (c) => `원형 게이지 ${c.q(c.label)} (${c.value}%)`,
++    menu: (c) => `풀다운 메뉴 ${c.q(c.label)} (열린 상태, 항목 ${c.items})`,
++    actionSheet: (c) => `액션 시트 (제목 ${c.q(c.label)}${c.sup ? `, 메시지 ${c.q(c.sup)}` : ""}, 동작 ${c.list}, 취소 포함)`,
++    emptyState: (c) => `빈 상태 화면${c.icon ? ` (심볼 ${c.icon})` : ""} (제목 ${c.q(c.label)}${c.sup ? `, 설명 ${c.q(c.sup)}` : ""})`,
++    barChart: (c) => `막대 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (${c.n}개 막대: ${c.list})`,
++    lineChart: (c) => `꺾은선 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
++    areaChart: (c) => `영역 차트 ${c.q(c.label)}${c.sup ? ` (${c.sup})` : ""} (가로축 ${c.n}개 지점: ${c.list})`,
++    pieChart: (c) => `도넛 차트 ${c.q(c.label)} (${c.n}개 조각: ${c.list})`,
++  },
++};
++
++const QUOTE: Record<Lang, (s: string) => string> = { ja: (s) => `「${s.trim()}」`, zh: (s) => `“${s.trim()}”`, en: (s) => `"${s.trim()}"`, ko: (s) => `"${s.trim()}"` };
++
++/** the layout's words for an iOS-only part, in any target's prompt; null for every other kind */
++export function iosItemText(it: Item, lang: Lang): string | null {
++  if (!isIosKind(it.kind)) return null;
++  const q = QUOTE[lang];
++  const sep = lang === "ja" || lang === "zh" ? "、" : ", ";
++  const tabs = it.tabs ?? [];
++  const sel = Math.min(Math.max(0, it.selected ?? 0), Math.max(0, tabs.length - 1));
++  const c: Said = {
++    q,
++    label: it.label.trim(),
++    sup: it.supporting?.trim() ?? "",
++    list: tabs.map((t) => q(t.label || "?")).join(sep),
++    items: tabs.map((t) => `${q(t.label || "?")}${t.icon ? ` (${t.icon})` : ""}`).join(sep),
++    n: tabs.length,
++    page: sel + 1,
++    chosen: tabs[sel] ? q(tabs[sel].label) : "?",
++    value: it.value ?? (it.kind === "stepper" ? 1 : 72),
++    open: !!it.checked,
++    icon: it.icon ?? "",
++  };
++  return IOS_ITEM_TEXT[lang][it.kind](c);
++}
+diff --git a/lib/prompt.ts b/lib/prompt.ts
+index 31638dc..c954d97 100644
+--- a/lib/prompt.ts
++++ b/lib/prompt.ts
+@@ -1,6 +1,7 @@
+ import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
+ import { constrainModalRails } from "./rail";
+-import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
++import { COLOR_MAP_IOS, DELIVERABLE_IOS, GENERAL_IOS, PH_IOS, iconLineIos, iosItemText, styleNoteIos, themeLinesIos, toPointsIos } from "./prompt-ios";
++import { sfToMaterial, sfToNames } from "./sfsymbols";
+ import {
+   CONTENT_W,
+   Place,
+@@ -293,6 +294,8 @@ function splitMenuText(it: Item, lang: Lang): string {
+ }
+ 
+ function itemJa(it: Item): string {
++  const ios = iosItemText(it, "ja");
++  if (ios) return ios;
+   const q = qj;
+   const v = VARIANT_TEXT.ja[it.variant];
+   const noun = KIND_TEXT.ja[it.kind]?.noun ?? it.kind;
+@@ -390,6 +393,8 @@ function itemJa(it: Item): string {
+ }
+ 
+ function itemEn(it: Item): string {
++  const ios = iosItemText(it, "en");
++  if (ios) return ios;
+   const q = qe;
+   const v = VARIANT_TEXT.en[it.variant];
+   const noun = KIND_TEXT.en[it.kind]?.noun ?? it.kind;
+@@ -487,6 +492,8 @@ function itemEn(it: Item): string {
+ }
+ 
+ function itemZh(it: Item): string {
++  const ios = iosItemText(it, "zh");
++  if (ios) return ios;
+   const q = qz;
+   const v = VARIANT_TEXT.zh[it.variant];
+   const noun = KIND_TEXT.zh[it.kind]?.noun ?? it.kind;
+@@ -584,6 +591,8 @@ function itemZh(it: Item): string {
+ }
+ 
+ function itemKo(it: Item): string {
++  const ios = iosItemText(it, "ko");
++  if (ios) return ios;
+   const q = qe;
+   const v = VARIANT_TEXT.ko[it.variant];
+   const noun = KIND_TEXT.ko[it.kind]?.noun ?? it.kind;
+@@ -1865,7 +1874,8 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
+     lines.push(`- ${typeof line === "function" ? line(platform) : line}`);
+   }
+   const out = lines.join("\n");
+-  return platform === "ios" ? toPointsIos(out) : out;
++  /* SF Symbol names ("sf:…") stay names on iOS and become their Material stand-ins elsewhere */
++  return platform === "ios" ? toPointsIos(sfToNames(out)) : sfToMaterial(out);
+ }
+ 
+ /** the prompt to hand out: the author's edited text when there is one, otherwise the generated one */
+diff --git a/lib/sfsymbols.test.ts b/lib/sfsymbols.test.ts
+new file mode 100644
+index 0000000..b5c799d
+--- /dev/null
++++ b/lib/sfsymbols.test.ts
+@@ -0,0 +1,35 @@
++import { describe, expect, it } from "vitest";
++
++import { SF_SYMBOLS, glyphOf, looksLikeSfName, searchSf, sfToMaterial, sfToNames } from "./sfsymbols";
++
++describe("SF Symbols catalog", () => {
++  it("holds well-formed, unique names, each with a Material stand-in", () => {
++    const names = SF_SYMBOLS.map((s) => s.name);
++    expect(new Set(names).size).toBe(names.length);
++    for (const s of SF_SYMBOLS) {
++      expect(s.name).toMatch(/^[a-z0-9]+(\.[a-z0-9]+)*$/);
++      expect(s.material).toMatch(/^[a-z0-9_]+$/);
++    }
++    expect(SF_SYMBOLS.length).toBeGreaterThanOrEqual(200);
++  });
++
++  it("draws SF names through their stand-in and leaves Material names alone", () => {
++    expect(glyphOf("sf:heart.fill")).toEqual({ glyph: "favorite", fill: true });
++    expect(glyphOf("sf:magnifyingglass")).toEqual({ glyph: "search", fill: false });
++    expect(glyphOf("sf:not.in.catalog")).toEqual({ glyph: "category", fill: false });
++    expect(glyphOf("home")).toEqual({ glyph: "home", fill: false });
++  });
++
++  it("writes SF names out on iOS and Material names elsewhere", () => {
++    expect(sfToNames("a sf:magnifyingglass icon, then sf:house.")).toBe("a magnifyingglass icon, then house.");
++    expect(sfToMaterial("a sf:magnifyingglass icon, then sf:house.")).toBe("a search icon, then home.");
++    expect(sfToMaterial("no symbols here")).toBe("no symbols here");
++  });
++
++  it("finds symbols by name or meaning and accepts typed names", () => {
++    expect(searchSf("heart").map((s) => s.name)).toContain("heart.fill");
++    expect(searchSf("delete").map((s) => s.name)).toContain("trash");
++    expect(looksLikeSfName("figure.walk.circle")).toBe(true);
++    expect(looksLikeSfName("not a name")).toBe(false);
++  });
++});
+diff --git a/lib/sfsymbols.ts b/lib/sfsymbols.ts
+new file mode 100644
+index 0000000..cc6293d
+--- /dev/null
++++ b/lib/sfsymbols.ts
+@@ -0,0 +1,325 @@
++/**
++ * SF Symbols for the iOS target.
++ *
++ * An icon written as "sf:<name>" is an SF Symbol. The iOS prompt hands the name to the code
++ * model as it is; the Android and web prompts turn it back into a Material name. SF Symbols
++ * may only be shown on Apple platforms, so the web canvas never draws them: every name has a
++ * Material Symbols stand-in that the canvas draws instead.
++ */
++
++export const SF_PREFIX = "sf:";
++export const isSf = (icon: string | null | undefined): icon is string => !!icon && icon.startsWith(SF_PREFIX);
++export const sfName = (icon: string) => icon.slice(SF_PREFIX.length);
++
++export type SfSymbol = { name: string; material: string; tags: string };
++
++/* name | Material stand-in | words to search by */
++const RAW = `
++house|home|home start main
++house.fill|home|home start main
++magnifyingglass|search|search find
++gearshape|settings|settings preferences
++gearshape.fill|settings|settings preferences
++gear|settings|settings preferences
++ellipsis|more_horiz|more options
++ellipsis.circle|more_horiz|more options
++line.3.horizontal|menu|menu hamburger
++line.3.horizontal.decrease|filter_list|filter sort
++line.3.horizontal.decrease.circle|filter_list|filter sort
++slider.horizontal.3|tune|adjust settings filter
++plus|add|add new create
++plus.circle|add_circle|add new create
++plus.circle.fill|add_circle|add new create
++minus|remove|remove subtract
++minus.circle|do_not_disturb_on|remove subtract
++xmark|close|close dismiss cancel
++xmark.circle|cancel|close dismiss cancel
++xmark.circle.fill|cancel|close dismiss cancel
++checkmark|check|done check confirm
++checkmark.circle|check_circle|done check confirm
++checkmark.circle.fill|check_circle|done check confirm
++circle|radio_button_unchecked|circle empty
++chevron.left|chevron_left|back left
++chevron.right|chevron_right|next right disclosure
++chevron.up|expand_less|up collapse
++chevron.down|expand_more|down expand
++chevron.backward|arrow_back_ios_new|back
++chevron.forward|arrow_forward_ios|forward next
++arrow.left|arrow_back|back left
++arrow.right|arrow_forward|forward right
++arrow.up|arrow_upward|up
++arrow.down|arrow_downward|down
++arrow.up.arrow.down|swap_vert|sort order
++arrow.left.arrow.right|swap_horiz|swap exchange
++arrow.clockwise|refresh|refresh reload
++arrow.counterclockwise|history|history undo back
++arrow.triangle.2.circlepath|sync|sync repeat
++arrow.uturn.backward|undo|undo
++arrow.uturn.forward|redo|redo
++arrow.up.right.square|open_in_new|open external link
++arrow.up.left.and.arrow.down.right|open_in_full|expand fullscreen
++arrow.down.right.and.arrow.up.left|close_fullscreen|collapse shrink
++square.and.arrow.up|ios_share|share export
++square.and.arrow.down|download|save download
++square.and.pencil|edit_square|compose write new
++pencil|edit|edit write
++trash|delete|delete remove bin
++trash.fill|delete|delete remove bin
++doc.on.doc|content_copy|copy duplicate
++link|link|link url
++paperclip|attach_file|attach attachment
++square.grid.2x2|grid_view|grid apps
++list.bullet|list|list
++list.number|format_list_numbered|list numbered
++list.dash|list|list
++sidebar.left|view_sidebar|sidebar
++rectangle.3.group|dashboard|dashboard widgets
++square.split.2x1|vertical_split|split columns
++square.stack.3d.up|layers|layers stack
++tablecells|table|table grid
++bookmark|bookmark|bookmark save
++bookmark.fill|bookmark|bookmark save
++tag|sell|tag label
++tag.fill|sell|tag label
++flag|flag|flag report
++flag.fill|flag|flag report
++pin|push_pin|pin
++pin.fill|push_pin|pin
++star|star|star favorite rating
++star.fill|star|star favorite rating
++heart|favorite|heart like love favorite
++heart.fill|favorite|heart like love favorite
++hand.thumbsup|thumb_up|like thumbs up
++hand.thumbsdown|thumb_down|dislike thumbs down
++eye|visibility|show visible view
++eye.slash|visibility_off|hide hidden
++lock|lock|lock secure private
++lock.fill|lock|lock secure private
++lock.open|lock_open|unlock open
++key|key|key password
++shield|shield|shield security
++info.circle|info|info about
++questionmark.circle|help|help question
++exclamationmark.triangle|warning|warning alert
++exclamationmark.circle|error|error alert
++nosign|block|block forbidden
++bell|notifications|bell notifications alerts
++bell.fill|notifications|bell notifications alerts
++bell.slash|notifications_off|mute notifications off
++message|chat|message chat sms
++message.fill|chat|message chat sms
++bubble.left|chat_bubble|chat comment
++bubble.left.and.bubble.right|forum|chat conversation
++phone|call|phone call
++phone.fill|call|phone call
++video|videocam|video call camera
++video.fill|videocam|video call camera
++envelope|mail|mail email
++envelope.fill|mail|mail email
++envelope.open|drafts|mail read
++paperplane|send|send
++paperplane.fill|send|send
++at|alternate_email|at email mention
++mic|mic|microphone voice
++mic.fill|mic|microphone voice
++mic.slash|mic_off|mute microphone
++person|person|person profile account user
++person.fill|person|person profile account user
++person.circle|account_circle|profile account avatar
++person.crop.circle|account_circle|profile account avatar
++person.2|group|people group friends
++person.2.fill|group|people group friends
++person.3|groups|people team community
++person.badge.plus|person_add|add friend invite
++person.crop.circle.badge.checkmark|how_to_reg|verified member
++photo|image|photo image picture
++photo.fill|image|photo image picture
++photo.on.rectangle|photo_library|photos gallery album
++photo.badge.plus|add_photo_alternate|add photo
++camera|photo_camera|camera photo
++camera.fill|photo_camera|camera photo
++play|play_arrow|play
++play.fill|play_arrow|play
++pause|pause|pause
++pause.fill|pause|pause
++stop.fill|stop|stop
++forward.fill|fast_forward|forward skip
++backward.fill|fast_rewind|back rewind
++shuffle|shuffle|shuffle random
++repeat|repeat|repeat loop
++music.note|music_note|music song
++music.note.list|queue_music|playlist music
++speaker.wave.2|volume_up|volume sound
++speaker.slash|volume_off|mute sound
++headphones|headphones|headphones audio
++waveform|graphic_eq|audio waveform voice
++film|movie|film movie video
++tv|tv|tv television
++airplayvideo|cast|airplay cast
++doc|description|document file
++doc.text|description|document file text
++doc.richtext|article|article document
++note.text|notes|note text
++folder|folder|folder files
++folder.fill|folder|folder files
++tray|inbox|inbox tray
++tray.full|inbox|inbox tray
++archivebox|archive|archive box
++books.vertical|library_books|library books
++book|menu_book|book read
++newspaper|newspaper|news article
++calendar|calendar_month|calendar date event
++calendar.badge.plus|calendar_add_on|add event
++clock|schedule|clock time
++clock.fill|schedule|clock time
++alarm|alarm|alarm
++timer|timer|timer countdown
++stopwatch|timer|stopwatch
++hourglass|hourglass_empty|wait pending
++clock.arrow.circlepath|history|history recent
++cart|shopping_cart|cart shop buy
++cart.fill|shopping_cart|cart shop buy
++bag|shopping_bag|bag shop
++basket|shopping_basket|basket shop
++creditcard|credit_card|card payment
++dollarsign.circle|paid|money price
++banknote|payments|money cash
++giftcard|card_giftcard|gift card
++gift|redeem|gift present
++storefront|storefront|store shop
++shippingbox|package_2|package box delivery
++truck.box|local_shipping|delivery shipping
++chart.bar|bar_chart|chart bar statistics
++chart.pie|pie_chart|chart pie
++chart.line.uptrend.xyaxis|trending_up|chart trend growth
++chart.xyaxis.line|show_chart|chart line
++map|map|map
++mappin|place|pin place location
++mappin.and.ellipse|location_on|location place
++location|near_me|location navigation
++location.fill|near_me|location navigation
++globe|public|globe web world language
++airplane|flight|flight travel
++car|directions_car|car drive
++car.fill|directions_car|car drive
++bus|directions_bus|bus transit
++tram|tram|tram train transit
++bicycle|directions_bike|bike cycling
++figure.walk|directions_walk|walk
++figure.run|directions_run|run fitness
++fork.knife|restaurant|food restaurant eat
++cup.and.saucer|local_cafe|coffee cafe
++bed.double|bed|bed hotel sleep
++building.2|apartment|building city
++building.columns|account_balance|bank museum
++leaf|eco|leaf nature eco
++sun.max|light_mode|sun light weather
++moon|dark_mode|moon dark night
++moon.fill|dark_mode|moon dark night
++cloud|cloud|cloud weather
++cloud.rain|rainy|rain weather
++snowflake|ac_unit|snow cold
++bolt|bolt|bolt energy flash
++bolt.fill|bolt|bolt energy flash
++flame|local_fire_department|fire hot
++drop|water_drop|water drop
++thermometer.medium|thermostat|temperature
++umbrella|umbrella|umbrella rain
++heart.text.square|monitor_heart|health heart
++dumbbell|fitness_center|fitness gym
++pills|medication|medicine pills
++cross.case|medical_services|medical first aid
++stethoscope|stethoscope|doctor health
++iphone|smartphone|phone device
++ipad|tablet|tablet device
++laptopcomputer|laptop|laptop computer
++desktopcomputer|desktop_windows|desktop computer
++applewatch|watch|watch
++keyboard|keyboard|keyboard
++printer|print|print printer
++wifi|wifi|wifi network
++antenna.radiowaves.left.and.right|sensors|signal broadcast
++battery.100|battery_full|battery
++battery.25|battery_2_bar|battery low
++qrcode|qr_code|qr code scan
++barcode|barcode|barcode scan
++icloud|cloud|icloud cloud sync
++icloud.slash|cloud_off|offline cloud
++externaldrive|hard_drive|drive storage
++power|power_settings_new|power
++lightbulb|lightbulb|idea light
++gamecontroller|sports_esports|game controller
++textformat|text_fields|text format
++bold|format_bold|bold
++italic|format_italic|italic
++underline|format_underlined|underline
++strikethrough|strikethrough_s|strikethrough
++text.alignleft|format_align_left|align left
++text.aligncenter|format_align_center|align center
++quote.bubble|format_quote|quote
++translate|translate|translate language
++sparkles|auto_awesome|sparkles magic ai
++wand.and.stars|auto_fix_high|magic wand
++paintbrush|brush|paint brush
++paintpalette|palette|palette color theme
++scissors|content_cut|cut scissors
++hammer|build|build tool
++wrench.and.screwdriver|handyman|tools repair
++puzzlepiece|extension|extension plugin
++graduationcap|school|school education
++briefcase|work|work job
++face.smiling|mood|smile happy
++hand.raised|back_hand|hand stop
++hand.wave|waving_hand|wave hello
++party.popper|celebration|party celebration
++trophy|emoji_events|trophy award
++medal|military_tech|medal award
++pawprint|pets|pet animal
++rectangle.portrait.and.arrow.right|logout|logout sign out
++`;
++
++export const SF_SYMBOLS: SfSymbol[] = RAW.trim()
++  .split("\n")
++  .map((line) => {
++    const [name, material, tags = ""] = line.split("|");
++    return { name, material, tags };
++  });
++
++const STAND_IN = new Map(SF_SYMBOLS.map((s) => [s.name, s.material]));
++
++/** what the canvas draws for an icon: a Material name as it is, an SF name through its stand-in */
++export function glyphOf(icon: string): { glyph: string; fill: boolean } {
++  if (!isSf(icon)) return { glyph: icon, fill: false };
++  const name = sfName(icon);
++  return { glyph: STAND_IN.get(name) ?? STAND_IN.get(name.replace(/\.fill$/, "")) ?? "category", fill: name.endsWith(".fill") };
++}
++
++/** the Material name an Android or web prompt uses for an icon */
++export const materialOf = (icon: string) => glyphOf(icon).glyph;
++
++/* an SF name in running text may be followed by a sentence's full stop */
++const SF_IN_TEXT = /sf:([a-z0-9.]+)/g;
++const split = (n: string) => {
++  const name = n.replace(/\.+$/, "");
++  return { name, rest: n.slice(name.length) };
++};
++
++/** iOS prompt text: "sf:magnifyingglass" becomes "magnifyingglass" */
++export const sfToNames = (text: string) => text.replace(SF_IN_TEXT, (_, n: string) => n);
++
++/** Android and web prompt text: "sf:magnifyingglass" becomes its Material stand-in, "search" */
++export const sfToMaterial = (text: string) =>
++  text.replace(SF_IN_TEXT, (_, n: string) => {
++    const { name, rest } = split(n);
++    return materialOf(SF_PREFIX + name) + rest;
++  });
++
++/** SF Symbols whose name or meaning matches the query, in catalog order */
++export function searchSf(q: string, limit = 240): SfSymbol[] {
++  const s = q.trim().toLowerCase();
++  if (!s) return SF_SYMBOLS.slice(0, limit);
++  return SF_SYMBOLS.filter((x) => x.name.includes(s) || x.tags.includes(s) || x.material.includes(s)).slice(0, limit);
++}
++
++/** a name the person typed that could be an SF Symbol not in the catalog */
++export const looksLikeSfName = (q: string) => /^[a-z0-9]+(\.[a-z0-9]+)*$/.test(q.trim());
+diff --git a/lib/tokens.ts b/lib/tokens.ts
+index 737defb..aa33cff 100644
+--- a/lib/tokens.ts
++++ b/lib/tokens.ts
+@@ -1,4 +1,5 @@
+ import type { CSSProperties } from "react";
++import { IOS_ENTRY_BOUNDS, IOS_KINDS, IOS_KIND_SPEC, IosKind, applyIosDefaults, iosDefaultTabs, iosSizeOf } from "./iosKinds";
+ import { FAB_MENU_TABS, KIND_TEXT, Lang, NAV_TABS, SPLIT_MENU_TABS, TAB_LABELS, getLang, t, SELECT_OPTIONS } from "./i18n";
+ import { Contrast, isLightColor, schemeFromSeed } from "./color";
+ 
+@@ -614,7 +615,9 @@ export type Kind =
+   | "radio"
+   | "carousel"
+   | "datePicker"
+-  | "timePicker";
++  | "timePicker"
++  /* SwiftUI controls and Swift Charts that only the iOS target offers (lib/iosKinds.ts) */
++  | IosKind;
+ 
+ /** how a carousel arranges its items: M3's four layouts */
+ export type CarouselLayout = "multiBrowse" | "uncontained" | "hero" | "fullScreen";
+@@ -877,7 +880,7 @@ export type ConnectSpec = { axis: Axis; outer: number; inner: number; family: st
+ /** `presets` are quick picks shown as chips; values outside min..max are hidden */
+ export type SizeSpec = { min: number; max: number; step: number; icon: string; presets?: number[] };
+ 
+-export type Category = "actions" | "navigation" | "containment" | "inputs" | "content" | "progress";
++export type Category = "actions" | "navigation" | "containment" | "inputs" | "content" | "progress" | "ios" | "charts";
+ 
+ export const CATEGORIES: { key: Category; label: string; icon: string }[] = [
+   { key: "actions", label: "Actions", icon: "touch_app" },
+@@ -886,6 +889,8 @@ export const CATEGORIES: { key: Category; label: string; icon: string }[] = [
+   { key: "inputs", label: "Inputs", icon: "toggle_on" },
+   { key: "content", label: "Content", icon: "notes" },
+   { key: "progress", label: "Progress", icon: "progress_activity" },
++  { key: "ios", label: "iOS", icon: "phone_iphone" },
++  { key: "charts", label: "Charts", icon: "bar_chart" },
+ ];
+ 
+ export type KindSpec = {
+@@ -922,6 +927,7 @@ export type KindSpec = {
+ };
+ 
+ export const KIND_SPEC: Record<Kind, KindSpec> = {
++  ...IOS_KIND_SPEC,
+   box: {
+     label: "Box",
+     noun: "ボックス",
+@@ -1616,6 +1622,7 @@ export const KIND_ORDER: Kind[] = [
+   "loadingIndicator",
+   "linearProgress",
+   "circularProgress",
++  ...IOS_KINDS,
+ ];
+ 
+ /* ---------- screen data ---------- */
+@@ -1766,6 +1773,8 @@ export const isFab = (k: Kind): k is FabKind => (FAB_KINDS as readonly string[])
+ /** parts the palette does not list on their own: a FAB's other two shapes are reached from its
+  *  own panel, where the three sit side by side. A saved sketch may still hold any of them. */
+ export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress"];
++/** kinds the parts palette offers only while the prompt targets iOS */
++export const IOS_ONLY_KINDS: Kind[] = [...IOS_KINDS];
+ /** how tall an extended FAB is drawn, and what it is made of at that height */
+ export const extendedFabHeight = (it: Item) => clamp(Math.round(it.size2 ?? 56), 56, FAB_H_MAX);
+ export function extendedFabMetrics(h: number) {
+@@ -1832,6 +1841,7 @@ export const ENTRY_BOUNDS: Partial<Record<Kind, { min: number; max: number }>> =
+   bottomNav: { min: 3, max: 5 },
+   navRail: { min: 3, max: 7 },
+   toolbar: { min: 2, max: 6 },
++  ...IOS_ENTRY_BOUNDS,
+ };
+ 
+ /** target id for the menu a FAB opens: the entries rise out of the button itself */
+@@ -2364,6 +2374,8 @@ const TOOLBAR_ICONS = ["format_bold", "format_italic", "format_underlined", "att
+ 
+ /** the entries a kind starts with, also used to fill in rows the author adds */
+ export function defaultTabsFor(kind: Kind): NavTab[] {
++  const ios = iosDefaultTabs(kind, getLang());
++  if (ios) return ios;
+   switch (kind) {
+     case "tabs":
+       return TAB_LABELS[getLang()].map((label) => ({ icon: "", label }));
+@@ -2424,6 +2436,7 @@ export function makeItem(kind: Kind): Item {
+   }
+   if (kind === "tabs" || kind === "fabMenu" || kind === "select" || kind === "splitButton") it.tabs = defaultTabsFor(kind);
+   if (kind === "toolbar") it.tabs = defaultTabsFor(kind).slice(0, 4);
++  applyIosDefaults(it, getLang());
+   return it;
+ }
+ 
+@@ -2521,7 +2534,7 @@ export function sizeOf(it: Item, widths: Record<string, number>) {
+     case "navRail":
+       return { w: railWidth(it), h: it.size2 ?? s.h };
+     default:
+-      return { w: s.w, h: s.h };
++      return iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h };
+   }
+ }
+ 
+diff --git a/public/agent.md b/public/agent.md
+index 9228960..32ee8ad 100644
+--- a/public/agent.md
++++ b/public/agent.md
+@@ -141,7 +141,31 @@ Fields that any part may carry:
+ - `action`: `{ "to": "<frame id>" | "back", "transition": "slide" | "slideLeft" | "slideUp" | "slideDown" | "fade" | "expand" | "none" }`, the screen a tap opens.
+ - `toggle` (buttons): `{ "icon": "favorite", "variant": "filled", "label": "Saved" }`, the look after a tap flips it on.
+ 
+-Icons are Material Symbols names (`home`, `search`, `add`, `favorite`, `settings`, `arrow_back`, `more_vert`, `edit`, `delete`, `share`, `restaurant`, `photo_camera`, …).
++Icons are Material Symbols names (`home`, `search`, `add`, `favorite`, `settings`, `arrow_back`, `more_vert`, `edit`, `delete`, `share`, `restaurant`, `photo_camera`, …). On the iOS target you may write an SF Symbol instead: its name after `sf:` (`sf:house`, `sf:magnifyingglass`, `sf:plus`, `sf:heart.fill`, `sf:gearshape`, `sf:square.and.arrow.up`, `sf:trash`, `sf:chevron.right`). The iOS prompt passes SF Symbol names to the code model as they are; the canvas draws a close Material glyph, because SF Symbols may not be shown on the web. The Android and web prompts turn `sf:` names back into Material names.
++
++### The iOS target
++
++Set `"platform": "ios"` when the person asks for an iPhone or iPad app or for SwiftUI. The prompt then asks for SwiftUI with the iOS 26 Liquid Glass design, and the canvas draws the navigation bar, top app bar, list items, search bar, tabs, slider and floating toolbar in their iOS look. These kinds exist for the iOS target only (the palette shows them only there):
++
++| kind | what it is | useful fields | default size |
++|---|---|---|---|
++| `sectionHeader` | header of a grouped-list section; the parts below it, up to the next header, are its rows | `label` | 380 × 32 |
++| `stepper` | stepper row (− / +) | `label`, `value` | 380 × 44 |
++| `wheelPicker` | wheel picker | `label`, `tabs` the options as `{ "label" }`, `selected` | 380 × 180 |
++| `colorPicker` | color picker row | `label` | 380 × 44 |
++| `disclosure` | disclosure group row | `label`, `supporting` what it reveals, `checked` expanded | 380 × 44 |
++| `textEditor` | multi-line text field | `label` placeholder | 380 × 140 |
++| `pageControl` | page dots of a paged view | `tabs` one `{ "label" }` per page, `selected` current page | 160 × 28 |
++| `gauge` | circular gauge | `label`, `value` 0–100 | 88 × 96 |
++| `menu` | pull-down menu, drawn open | `label` the button's title, `tabs` the items as `{ "icon", "label" }` | 250 × (12 + 44 per item) |
++| `actionSheet` | confirmation dialog | `label` title, `supporting` message, `tabs` the actions as `{ "label" }`; Cancel is added | 380 × (136 + 56 per action) |
++| `emptyState` | empty state (ContentUnavailableView) | `icon`, `label` title, `supporting` description | 380 × 220 |
++| `barChart` | bar chart (Swift Charts) | `label` title, `supporting` subtitle, `tabs` the categories as `{ "label" }` | 380 × 240 |
++| `lineChart` | line chart | as `barChart` | 380 × 240 |
++| `areaChart` | area chart | as `barChart` | 380 × 240 |
++| `pieChart` | donut chart | `label` title, `tabs` the slices as `{ "label" }` | 380 × 260 |
++
++The heights a chart shows on the canvas are illustrative; the prompt asks for the app's real data. A settings screen on iOS is a `sectionHeader` followed by a run of `listItem`s (one group, `"axis": "y"`), once per section.
+ 
+ ## Keep it simple
+ 

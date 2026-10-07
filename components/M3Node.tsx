@@ -71,6 +71,8 @@ import { CarouselBody, DatePickerBody, TimePickerBody } from "./Pickers";
 import { t, useLang } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { usePlatform } from "@/lib/platform";
+import { glyphOf } from "@/lib/sfsymbols";
+import { IOS_ONLY_KINDS } from "@/lib/tokens";
 import { IosBody, takesIosSkin } from "./IosNode";
 import { railSelectedLabelColor } from "@/lib/color";
 
@@ -93,21 +95,23 @@ export function Icon({
   fill?: boolean;
   weight?: number;
 }) {
+  /* an SF Symbol name ("sf:…") is drawn through its Material stand-in */
+  const sf = glyphOf(name);
   return (
     <span
       className="msr"
       /* the ligature is a picture, not words: a screen reader should not spell out its name */
       aria-hidden
-      data-fill={fill ? "1" : "0"}
+      data-fill={fill || sf.fill ? "1" : "0"}
       style={{
         fontSize: size,
         color,
         fontVariationSettings: weight
-          ? `"FILL" ${fill ? 1 : 0}, "wght" ${weight}, "GRAD" 0, "opsz" 24`
+          ? `"FILL" ${fill || sf.fill ? 1 : 0}, "wght" ${weight}, "GRAD" 0, "opsz" 24`
           : undefined,
       }}
     >
-      {name}
+      {sf.glyph}
     </span>
   );
 }
@@ -1876,7 +1880,7 @@ export function M3Node({
     : ripples.list;
 
   /* an iOS target draws the part in its iOS skin, in the same box; it comes after every hook */
-  if (platform === "ios" && takesIosSkin(drawn))
+  if (takesIosSkin(drawn) && (platform === "ios" || IOS_ONLY_KINDS.includes(drawn.kind)))
     return (
       <div
         data-node={item.id}
@@ -1984,7 +1988,7 @@ export function M3Static({
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
   const measured = isMeasured(item);
-  if (platform === "ios" && takesIosSkin(item))
+  if (takesIosSkin(item) && (platform === "ios" || IOS_ONLY_KINDS.includes(item.kind)))
     return (
       <div style={{ width: size.w, height: size.h, flex: "0 0 auto", boxSizing: "border-box", ...style }}>
         <IosBody item={item} p={palette} w={size.w} h={size.h} dark={dark} radii={r} />

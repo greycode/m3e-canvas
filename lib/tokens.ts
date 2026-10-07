@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { IOS_ENTRY_BOUNDS, IOS_KINDS, IOS_KIND_SPEC, IosKind, applyIosDefaults, iosDefaultTabs, iosSizeOf } from "./iosKinds";
 import { FAB_MENU_TABS, KIND_TEXT, Lang, NAV_TABS, SPLIT_MENU_TABS, TAB_LABELS, getLang, t, SELECT_OPTIONS } from "./i18n";
 import { Contrast, isLightColor, schemeFromSeed } from "./color";
 
@@ -614,7 +615,9 @@ export type Kind =
   | "radio"
   | "carousel"
   | "datePicker"
-  | "timePicker";
+  | "timePicker"
+  /* SwiftUI controls and Swift Charts that only the iOS target offers (lib/iosKinds.ts) */
+  | IosKind;
 
 /** how a carousel arranges its items: M3's four layouts */
 export type CarouselLayout = "multiBrowse" | "uncontained" | "hero" | "fullScreen";
@@ -877,7 +880,7 @@ export type ConnectSpec = { axis: Axis; outer: number; inner: number; family: st
 /** `presets` are quick picks shown as chips; values outside min..max are hidden */
 export type SizeSpec = { min: number; max: number; step: number; icon: string; presets?: number[] };
 
-export type Category = "actions" | "navigation" | "containment" | "inputs" | "content" | "progress";
+export type Category = "actions" | "navigation" | "containment" | "inputs" | "content" | "progress" | "ios" | "charts";
 
 export const CATEGORIES: { key: Category; label: string; icon: string }[] = [
   { key: "actions", label: "Actions", icon: "touch_app" },
@@ -886,6 +889,8 @@ export const CATEGORIES: { key: Category; label: string; icon: string }[] = [
   { key: "inputs", label: "Inputs", icon: "toggle_on" },
   { key: "content", label: "Content", icon: "notes" },
   { key: "progress", label: "Progress", icon: "progress_activity" },
+  { key: "ios", label: "iOS", icon: "phone_iphone" },
+  { key: "charts", label: "Charts", icon: "bar_chart" },
 ];
 
 export type KindSpec = {
@@ -922,6 +927,7 @@ export type KindSpec = {
 };
 
 export const KIND_SPEC: Record<Kind, KindSpec> = {
+  ...IOS_KIND_SPEC,
   box: {
     label: "Box",
     noun: "ボックス",
@@ -1616,6 +1622,7 @@ export const KIND_ORDER: Kind[] = [
   "loadingIndicator",
   "linearProgress",
   "circularProgress",
+  ...IOS_KINDS,
 ];
 
 /* ---------- screen data ---------- */
@@ -1766,6 +1773,8 @@ export const isFab = (k: Kind): k is FabKind => (FAB_KINDS as readonly string[])
 /** parts the palette does not list on their own: a FAB's other two shapes are reached from its
  *  own panel, where the three sit side by side. A saved sketch may still hold any of them. */
 export const PALETTE_HIDDEN: Kind[] = ["extendedFab", "fabMenu", "circularProgress"];
+/** kinds the parts palette offers only while the prompt targets iOS */
+export const IOS_ONLY_KINDS: Kind[] = [...IOS_KINDS];
 /** how tall an extended FAB is drawn, and what it is made of at that height */
 export const extendedFabHeight = (it: Item) => clamp(Math.round(it.size2 ?? 56), 56, FAB_H_MAX);
 export function extendedFabMetrics(h: number) {
@@ -1832,6 +1841,7 @@ export const ENTRY_BOUNDS: Partial<Record<Kind, { min: number; max: number }>> =
   bottomNav: { min: 3, max: 5 },
   navRail: { min: 3, max: 7 },
   toolbar: { min: 2, max: 6 },
+  ...IOS_ENTRY_BOUNDS,
 };
 
 /** target id for the menu a FAB opens: the entries rise out of the button itself */
@@ -2364,6 +2374,8 @@ const TOOLBAR_ICONS = ["format_bold", "format_italic", "format_underlined", "att
 
 /** the entries a kind starts with, also used to fill in rows the author adds */
 export function defaultTabsFor(kind: Kind): NavTab[] {
+  const ios = iosDefaultTabs(kind, getLang());
+  if (ios) return ios;
   switch (kind) {
     case "tabs":
       return TAB_LABELS[getLang()].map((label) => ({ icon: "", label }));
@@ -2424,6 +2436,7 @@ export function makeItem(kind: Kind): Item {
   }
   if (kind === "tabs" || kind === "fabMenu" || kind === "select" || kind === "splitButton") it.tabs = defaultTabsFor(kind);
   if (kind === "toolbar") it.tabs = defaultTabsFor(kind).slice(0, 4);
+  applyIosDefaults(it, getLang());
   return it;
 }
 
@@ -2521,7 +2534,7 @@ export function sizeOf(it: Item, widths: Record<string, number>) {
     case "navRail":
       return { w: railWidth(it), h: it.size2 ?? s.h };
     default:
-      return { w: s.w, h: s.h };
+      return iosSizeOf(it, n, s.h) ?? { w: s.w, h: s.h };
   }
 }
 

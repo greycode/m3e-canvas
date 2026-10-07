@@ -141,7 +141,31 @@ Fields that any part may carry:
 - `action`: `{ "to": "<frame id>" | "back", "transition": "slide" | "slideLeft" | "slideUp" | "slideDown" | "fade" | "expand" | "none" }`, the screen a tap opens.
 - `toggle` (buttons): `{ "icon": "favorite", "variant": "filled", "label": "Saved" }`, the look after a tap flips it on.
 
-Icons are Material Symbols names (`home`, `search`, `add`, `favorite`, `settings`, `arrow_back`, `more_vert`, `edit`, `delete`, `share`, `restaurant`, `photo_camera`, …).
+Icons are Material Symbols names (`home`, `search`, `add`, `favorite`, `settings`, `arrow_back`, `more_vert`, `edit`, `delete`, `share`, `restaurant`, `photo_camera`, …). On the iOS target you may write an SF Symbol instead: its name after `sf:` (`sf:house`, `sf:magnifyingglass`, `sf:plus`, `sf:heart.fill`, `sf:gearshape`, `sf:square.and.arrow.up`, `sf:trash`, `sf:chevron.right`). The iOS prompt passes SF Symbol names to the code model as they are; the canvas draws a close Material glyph, because SF Symbols may not be shown on the web. The Android and web prompts turn `sf:` names back into Material names.
+
+### The iOS target
+
+Set `"platform": "ios"` when the person asks for an iPhone or iPad app or for SwiftUI. The prompt then asks for SwiftUI with the iOS 26 Liquid Glass design, and the canvas draws the navigation bar, top app bar, list items, search bar, tabs, slider and floating toolbar in their iOS look. These kinds exist for the iOS target only (the palette shows them only there):
+
+| kind | what it is | useful fields | default size |
+|---|---|---|---|
+| `sectionHeader` | header of a grouped-list section; the parts below it, up to the next header, are its rows | `label` | 380 × 32 |
+| `stepper` | stepper row (− / +) | `label`, `value` | 380 × 44 |
+| `wheelPicker` | wheel picker | `label`, `tabs` the options as `{ "label" }`, `selected` | 380 × 180 |
+| `colorPicker` | color picker row | `label` | 380 × 44 |
+| `disclosure` | disclosure group row | `label`, `supporting` what it reveals, `checked` expanded | 380 × 44 |
+| `textEditor` | multi-line text field | `label` placeholder | 380 × 140 |
+| `pageControl` | page dots of a paged view | `tabs` one `{ "label" }` per page, `selected` current page | 160 × 28 |
+| `gauge` | circular gauge | `label`, `value` 0–100 | 88 × 96 |
+| `menu` | pull-down menu, drawn open | `label` the button's title, `tabs` the items as `{ "icon", "label" }` | 250 × (12 + 44 per item) |
+| `actionSheet` | confirmation dialog | `label` title, `supporting` message, `tabs` the actions as `{ "label" }`; Cancel is added | 380 × (136 + 56 per action) |
+| `emptyState` | empty state (ContentUnavailableView) | `icon`, `label` title, `supporting` description | 380 × 220 |
+| `barChart` | bar chart (Swift Charts) | `label` title, `supporting` subtitle, `tabs` the categories as `{ "label" }` | 380 × 240 |
+| `lineChart` | line chart | as `barChart` | 380 × 240 |
+| `areaChart` | area chart | as `barChart` | 380 × 240 |
+| `pieChart` | donut chart | `label` title, `tabs` the slices as `{ "label" }` | 380 × 260 |
+
+The heights a chart shows on the canvas are illustrative; the prompt asks for the app's real data. A settings screen on iOS is a `sectionHeader` followed by a run of `listItem`s (one group, `"axis": "y"`), once per section.
 
 ## Keep it simple
 

@@ -1,15 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CATEGORIES, KIND_ORDER, KIND_SPEC, PALETTE_HIDDEN, Category, Kind, Palette } from "@/lib/tokens";
+import { CATEGORIES, IOS_ONLY_KINDS, KIND_ORDER, KIND_SPEC, PALETTE_HIDDEN, Category, Kind, Palette } from "@/lib/tokens";
+import { usePlatform } from "@/lib/platform";
 import { Icon } from "./M3Node";
 import { KIND_TEXT, t, useLang } from "@/lib/i18n";
 import { Field, Section, Tile } from "./ui";
 
 const CATEGORY_TEXT = {
-  ja: { actions: "操作", navigation: "ナビゲーション", containment: "コンテナ", inputs: "入力", content: "コンテンツ", progress: "進捗" },
-  zh: { actions: "操作", navigation: "导航", containment: "容器", inputs: "输入", content: "内容", progress: "进度" },
-  ko: { actions: "동작", navigation: "내비게이션", containment: "컨테이너", inputs: "입력", content: "콘텐츠", progress: "진행 상태" },
+  ja: { actions: "操作", navigation: "ナビゲーション", containment: "コンテナ", inputs: "入力", content: "コンテンツ", progress: "進捗", ios: "iOS", charts: "グラフ" },
+  zh: { actions: "操作", navigation: "导航", containment: "容器", inputs: "输入", content: "内容", progress: "进度", ios: "iOS", charts: "图表" },
+  ko: { actions: "동작", navigation: "내비게이션", containment: "컨테이너", inputs: "입력", content: "콘텐츠", progress: "진행 상태", ios: "iOS", charts: "차트" },
 } satisfies Record<string, Record<Category, string>>;
 
 export function PartsPalette({
@@ -27,19 +28,22 @@ export function PartsPalette({
   onPartActivate: (kind: Kind) => void;
 }) {
   const lang = useLang();
+  /* the iOS-only parts are offered while the prompt targets iOS */
+  const ios = usePlatform() === "ios";
+  const offered = (k: Kind) => !PALETTE_HIDDEN.includes(k) && (ios || !IOS_ONLY_KINDS.includes(k));
   const [q, setQ] = useState("");
   const labelOf = (k: Kind) => (lang === "en" ? KIND_SPEC[k].label : (KIND_TEXT[lang][k]?.noun ?? KIND_SPEC[k].label));
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     /* the shapes a part switches into in its own panel are not tiles of their own */
-    const listed = KIND_ORDER.filter((k) => !PALETTE_HIDDEN.includes(k));
+    const listed = KIND_ORDER.filter(offered);
     if (!s) return listed;
     return listed.filter((k) => {
       const sp = KIND_SPEC[k];
       return labelOf(k).toLowerCase().includes(s) || sp.label.toLowerCase().includes(s) || sp.noun.toLowerCase().includes(s) || k.toLowerCase().includes(s);
     });
-  }, [q, lang]);
+  }, [q, lang, ios]);
 
   const tile = (k: Kind) => {
     const s = KIND_SPEC[k];
@@ -86,9 +90,9 @@ export function PartsPalette({
             )}
           </div>
         ) : (
-          CATEGORIES.map((c) => (
+          CATEGORIES.filter((c) => ios || (c.key !== "ios" && c.key !== "charts")).map((c) => (
             <Section key={c.key} id={`cat:${c.key}`} icon={c.icon} title={lang === "en" ? c.label : CATEGORY_TEXT[lang][c.key]} p={p}>
-              <div style={grid}>{KIND_ORDER.filter((k) => KIND_SPEC[k].category === c.key && !PALETTE_HIDDEN.includes(k)).map(tile)}</div>
+              <div style={grid}>{KIND_ORDER.filter((k) => KIND_SPEC[k].category === c.key && offered(k)).map(tile)}</div>
             </Section>
           ))
         )}
